@@ -36,6 +36,10 @@ LIGHT_THEME = {
     "badge_text": "#334155",
     "badge_green_bg": "#ECFDF5",
     "badge_green_text": "#059669",
+    "danger": "#DC2626",
+    "danger_hover": "#B91C1C",
+    "danger_bg": "#FEE2E2",
+    "danger_border": "#FCA5A5",
 }
 
 DARK_THEME = {
@@ -67,7 +71,12 @@ DARK_THEME = {
     "badge_text": "#CBD5E1",
     "badge_green_bg": "#064E3B",
     "badge_green_text": "#34D399",
+    "danger": "#F87171",
+    "danger_hover": "#EF4444",
+    "danger_bg": "#3B181A",
+    "danger_border": "#7F1D1D",
 }
+
 
 def detect_system_theme() -> str:
     """检测 Windows 系统主题，返回 'dark' 或 'light'。"""
@@ -104,31 +113,35 @@ QWidget {{
     font-size: 14px;
     color: {tokens['text_main']};
 }}
-QFrame#Sidebar {{
-    background: {tokens['sidebar_bg']};
-    border-right: 1px solid {tokens['sidebar_border']};
+QLabel {{
+    background: transparent;
 }}
 QLabel#Brand {{
-    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
-    font-size: 26px;
-    font-weight: 700;
-    color: {tokens['text_main']};
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: {tokens['accent']};
 }}
 QLabel#Eyebrow {{
-    color: {tokens['text_muted']};
     font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 1px;
+    font-weight: 700;
+    color: {tokens['text_muted']};
+    letter-spacing: 0.8px;
 }}
 QLabel#Heading {{
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 700;
     color: {tokens['text_main']};
+    letter-spacing: -0.4px;
 }}
 QLabel#Subheading {{
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
     color: {tokens['text_main']};
+}}
+QLabel#Subtitle {{
+    font-size: 13px;
+    color: {tokens['text_muted']};
 }}
 QLabel#Muted {{
     color: {tokens['text_muted']};
@@ -138,11 +151,25 @@ QLabel#Status {{
     color: {tokens['text_muted']};
     font-size: 12px;
 }}
-QLabel#ProgressValue {{
-    color: {tokens['accent']};
-    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
-    font-size: 17px;
-    font-weight: 700;
+QLabel#Badge {{
+    background: {tokens['badge_bg']};
+    color: {tokens['badge_text']};
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 600;
+}}
+QLabel#BadgeSuccess {{
+    background: {tokens['badge_green_bg']};
+    color: {tokens['badge_green_text']};
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 600;
+}}
+QFrame#Sidebar {{
+    background: {tokens['sidebar_bg']};
+    border-right: 1px solid {tokens['sidebar_border']};
 }}
 QFrame#Card {{
     background: {tokens['bg_surface']};
@@ -221,6 +248,51 @@ QPushButton#Navigation:checked {{
     font-weight: 700;
     border-color: {tokens['accent_tint_border']};
 }}
+QPushButton#ExitButton {{
+    text-align: left;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: {tokens['text_muted']};
+    padding: 9px 14px;
+    font-weight: 500;
+    font-size: 13px;
+}}
+QPushButton#ExitButton:hover {{
+    background: {tokens['danger_bg']};
+    color: {tokens['danger']};
+    border: 1px solid {tokens['danger_border']};
+    font-weight: 600;
+}}
+QPushButton#ExitButton:pressed {{
+    background: {tokens['danger_border']};
+    color: {tokens['danger']};
+}}
+QPushButton#Danger {{
+    background: {tokens['danger']};
+    color: #FFFFFF;
+    border: 1px solid {tokens['danger']};
+    border-radius: 8px;
+    padding: 7px 16px;
+    font-weight: 600;
+}}
+QPushButton#Danger:hover {{
+    background: {tokens['danger_hover']};
+    border-color: {tokens['danger_hover']};
+}}
+QPushButton#DangerSecondary {{
+    background: {tokens['bg_surface']};
+    color: {tokens['danger']};
+    border: 1px solid {tokens['danger_border']};
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-weight: 500;
+    font-size: 13px;
+}}
+QPushButton#DangerSecondary:hover {{
+    background: {tokens['danger_bg']};
+    border-color: {tokens['danger']};
+}}
 QPushButton#Mode {{
     padding: 7px 18px;
     border-radius: 8px;
@@ -253,22 +325,85 @@ QComboBox {{
     color: {tokens['text_main']};
     border: 1px solid {tokens['border']};
     border-radius: 8px;
-    padding: 9px 12px;
+    padding: 7px 12px;
+    min-height: 20px;
+}}
+QComboBox:hover {{
+    border-color: {tokens['border_strong']};
 }}
 QComboBox:focus {{
     border: 2px solid {tokens['border_focus']};
-    padding: 8px 11px;
+    padding: 6px 11px;
 }}
 QComboBox::drop-down {{
-    border: 0;
-    width: 24px;
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 28px;
+    border-left: 0;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}}
+QComboBox::down-arrow {{
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid {tokens['text_muted']};
+    margin-right: 8px;
+}}
+QComboBox::down-arrow:hover {{
+    border-top-color: {tokens['accent']};
 }}
 QComboBox QAbstractItemView {{
+    outline: 0;
     background: {tokens['bg_surface']};
     color: {tokens['text_main']};
     border: 1px solid {tokens['border']};
+    border-radius: 8px;
+    padding: 4px;
     selection-background-color: {tokens['accent_tint']};
     selection-color: {tokens['accent']};
+}}
+QComboBox QAbstractItemView::item {{
+    min-height: 32px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    color: {tokens['text_main']};
+}}
+QComboBox QAbstractItemView::item:hover {{
+    background: {tokens['bg_hover']};
+    color: {tokens['text_main']};
+}}
+QComboBox QAbstractItemView::item:selected {{
+    background: {tokens['accent_tint']};
+    color: {tokens['accent']};
+    font-weight: 600;
+}}
+QMenu {{
+    background: {tokens['bg_surface']};
+    color: {tokens['text_main']};
+    border: 1px solid {tokens['border']};
+    border-radius: 8px;
+    padding: 5px;
+}}
+QMenu::item {{
+    padding: 8px 24px 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: {tokens['text_main']};
+}}
+QMenu::item:selected {{
+    background: {tokens['bg_hover']};
+    color: {tokens['text_main']};
+}}
+QMenu::item:disabled {{
+    color: {tokens['text_faint']};
+    background: transparent;
+}}
+QMenu::separator {{
+    height: 1px;
+    background: {tokens['border_light']};
+    margin: 4px 6px;
 }}
 QTableWidget {{
     background: {tokens['bg_surface']};
@@ -295,6 +430,28 @@ QHeaderView::section {{
     border-bottom: 1px solid {tokens['border']};
     font-weight: 600;
     font-size: 13px;
+}}
+QHeaderView::section:hover {{
+    background: {tokens['bg_hover']};
+    color: {tokens['text_main']};
+}}
+QHeaderView::up-arrow {{
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 5px solid {tokens['accent']};
+    margin-right: 6px;
+    margin-bottom: 2px;
+}}
+QHeaderView::down-arrow {{
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid {tokens['accent']};
+    margin-right: 6px;
+    margin-top: 2px;
 }}
 QProgressBar {{
     border: 0;

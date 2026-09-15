@@ -2,8 +2,8 @@ from unittest.mock import Mock
 import uuid
 
 import pytest
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtCore import QPoint, QTimer
+from PySide6.QtWidgets import QMenu, QMessageBox
 
 from vidveya.formats import build_options
 from vidveya.store import Store, timestamp
@@ -253,3 +253,197 @@ def test_cookie_help_dialog(make_window, monkeypatch):
     window.show_cookie_help()
     assert len(dialog_opened) == 1
     assert "Cookie" in dialog_opened[0]
+
+
+def test_combobox_uses_qlistview(make_window):
+    from PySide6.QtWidgets import QListView
+    window = make_window()
+    for combo in (window.theme_input, window.language_input, window.close_action_input, window.sort_combo):
+        assert isinstance(combo.view(), QListView)
+
+
+def test_exit_button_ui_and_behavior(make_window):
+    window = make_window()
+    assert hasattr(window, "exit_button")
+    assert window.exit_button.objectName() == "ExitButton"
+    assert "⏻" in window.exit_button.text()
+
+
+def test_local_datetime_formatting_no_utc():
+    from vidveya.ui.window import format_local_datetime
+    utc_str = "2026-09-15T09:30:00+00:00"
+    formatted = format_local_datetime(utc_str)
+    assert "UTC" not in formatted
+    assert "-" in formatted
+    assert ":" in formatted
+    assert len(formatted) == 19
+
+
+def test_history_sorting_and_rendering(make_window):
+    window = make_window()
+    job1 = {
+        "id": "job-1",
+        "created": "2026-09-15T01:00:00+00:00",
+        "title": "Beta Video",
+        "url": "https://youtube.com/watch?v=1",
+        "state": "completed",
+        "option": {"resolution": "1080", "container": "mp4"},
+    }
+    job2 = {
+        "id": "job-2",
+        "created": "2026-09-15T02:00:00+00:00",
+        "title": "Alpha Video",
+        "url": "https://youtube.com/watch?v=2",
+        "state": "completed",
+        "option": {"resolution": "720", "container": "mp4"},
+    }
+    window.store.save_job(job1)
+    window.store.save_job(job2)
+    window.refresh_history()
+    assert window.history.rowCount() == 2
+
+    # 默认创建时间倒序 (最新在前: job2)
+    assert window.history.item(0, 0).text() == "Alpha Video"
+    assert window.history.item(1, 0).text() == "Beta Video"
+
+    # 切换为创建时间正序 (最早在前: job1)
+    idx_asc = window.sort_combo.findData("date_asc")
+    window.sort_combo.setCurrentIndex(idx_asc)
+    assert window.history.item(0, 0).text() == "Beta Video"
+    assert window.history.item(1, 0).text() == "Alpha Video"
+
+    # 切换为视频名称正序 (Alpha 在前)
+    idx_name_asc = window.sort_combo.findData("name_asc")
+    window.sort_combo.setCurrentIndex(idx_name_asc)
+    assert window.history.item(0, 0).text() == "Alpha Video"
+    assert window.history.item(1, 0).text() == "Beta Video"
+
+    # 切换为视频名称倒序 (Beta 在前)
+    idx_name_desc = window.sort_combo.findData("name_desc")
+    window.sort_combo.setCurrentIndex(idx_name_desc)
+    assert window.history.item(0, 0).text() == "Beta Video"
+    assert window.history.item(1, 0).text() == "Alpha Video"
+
+
+def test_history_delete_and_clear(make_window, monkeypatch):
+    window = make_window()
+    job1 = {
+        "id": "job-1",
+        "created": "2026-09-15T01:00:00+00:00",
+        "title": "Video 1",
+        "url": "https://youtube.com/watch?v=1",
+        "state": "completed",
+        "option": {"resolution": "1080", "container": "mp4"},
+    }
+    job2 = {
+        "id": "job-2",
+        "created": "2026-09-15T02:00:00+00:00",
+        "title": "Video 2",
+        "url": "https://youtube.com/watch?v=2",
+        "state": "completed",
+        "option": {"resolution": "1080", "container": "mp4"},
+    }
+    window.store.save_job(job1)
+    window.store.save_job(job2)
+    window.refresh_history()
+    assert window.history.rowCount() == 2
+
+    # 选中第一行并删除
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    window.history.selectRow(0)
+    window.delete_selected()
+    assert window.history.rowCount() == 1
+
+    # 清空所有记录
+    window.clear_all_history()
+    assert window.history.rowCount() == 0
+    assert len(window.store.jobs()) == 0
+
+
+@pytest.mark.parametrize("action", ["delete_selected", "clear_all_history"])
+def test_history_actions_protect_an_ongoing_download(make_window, tmp_path, monkeypatch, action):
+    window = make_window()
+    worker = start_fake_download(window, tmp_path)
+    active_id = window.current_job["id"]
+    video = tmp_path / "已下载的视频.mp4"
+    video.write_bytes(b"keep downloaded media")
+    window.store.save_job({"id": "finished", "state": "completed", "created": timestamp(),
+                           "title": "已完成", "option": {}, "result": {"path": str(video)}})
+    window.refresh_history()
+    active_row = next(i for i, job in enumerate(window.display_jobs) if job["id"] == active_id)
+    window.history.selectRow(active_row)
+    assert not window.delete_history_button.isEnabled()
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    getattr(window, action)()
+
+    assert active_id in {job["id"] for job in window.store.jobs()}
+    if action == "clear_all_history":
+        assert len(window.store.jobs()) == 1
+        assert not window.clear_history_button.isEnabled()
+    assert video.read_bytes() == b"keep downloaded media"
+    worker.cancel.assert_not_called()
+    window.show_progress({"state": "merging", "percent": None})
+    assert next(job for job in window.store.jobs() if job["id"] == active_id)["state"] == "merging"
+    window.download_done({"path": str(video), "verification": {"bytes": video.stat().st_size}})
+    assert next(job for job in window.store.jobs() if job["id"] == active_id)["state"] == "completed"
+    assert window.progress_bar.value() == 100
+
+
+def test_context_menu_keeps_target_while_worker_refreshes_history(make_window, monkeypatch):
+    window = make_window()
+    target = {"id": "target", "title": "Original", "state": "completed", "option": {},
+              "created": "2026-09-15T01:00:00+00:00"}
+    window.store.save_job(target)
+    window.refresh_history()
+    monkeypatch.setattr(window.history, "itemAt", lambda pos: window.history.item(0, 0))
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    opened = []
+
+    def open_menu(menu, pos):
+        opened.append(True)
+        window.store.save_job({**target, "id": "newer", "created": "2026-09-15T02:00:00+00:00"})
+        window.refresh_history()
+        menu.actions()[-1].trigger()
+
+    menu = QMenu(window)
+    monkeypatch.setattr("vidveya.ui.window.QMenu", lambda parent: menu)
+    monkeypatch.setattr(menu, "exec", lambda pos: open_menu(menu, pos))
+    window.show_history_context_menu(QPoint(1, 1))
+    assert opened == [True]
+    assert [job["id"] for job in window.store.jobs()] == ["newer"]
+
+
+def test_active_history_context_menu_disables_deletion(make_window, tmp_path, monkeypatch):
+    window = make_window()
+    start_fake_download(window, tmp_path)
+    window.refresh_history()
+    monkeypatch.setattr(window.history, "itemAt", lambda pos: window.history.item(0, 0))
+    enabled = []
+    menu = QMenu(window)
+    monkeypatch.setattr("vidveya.ui.window.QMenu", lambda parent: menu)
+    monkeypatch.setattr(menu, "exec", lambda pos: enabled.append(menu.actions()[-1].isEnabled()))
+    window.show_history_context_menu(QPoint(1, 1))
+    assert enabled == [False]
+
+
+def test_history_selection_survives_sort_and_refresh(make_window, monkeypatch):
+    window = make_window()
+    for number, title in enumerate(("Beta", "Alpha"), start=1):
+        window.store.save_job({"id": str(number), "title": title, "state": "completed", "option": {},
+                               "created": f"2026-09-15T0{number}:00:00+00:00"})
+    window.refresh_history()
+    window.history.selectRow(0)
+    assert window.selected_job()["id"] == "2"
+
+    window.sort_combo.setCurrentIndex(window.sort_combo.findData("date_asc"))
+    assert window.selected_job()["id"] == "2"
+    window.store.save_job({"id": "older", "title": "Earlier", "state": "completed", "option": {},
+                           "created": "2026-09-15T00:00:00+00:00"})
+    window.refresh_history()
+    assert window.selected_job()["id"] == "2"
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    window.delete_selected()
+    assert {job["id"] for job in window.store.jobs()} == {"1", "older"}
+    assert window.selected_job() is None
+    assert not window.delete_history_button.isEnabled()

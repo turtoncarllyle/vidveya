@@ -30,17 +30,24 @@ Every option must have audio. Separate streams are merged automatically, then th
 
 In **Settings → When closing the window**, choose **Minimize** or **Exit**, then save. By default, closing shows a prompt with minimize selected. Check **Remember my choice, do not ask again** in that prompt, or disable prompts in Settings. Minimizing keeps downloads running; use the taskbar to restore the window. The sidebar **Exit** action always allows you to quit. Exiting during a download requires confirmation and saves the interrupted job in history for retry.
 
-### Appearance, language, and shortcuts (0.1.4)
+### Appearance, language, and shortcuts
 
 Choose light, dark, or system theme in **Settings → Appearance & Language**, or use the sidebar theme toggle. Select Simplified Chinese, English, or system language and restart the app to apply it. Some download status messages, diagnostics, and dialogs remain in Chinese.
 
 The sidebar shows the current download's progress even when viewing history or settings. Completed downloads have **Play Video** and **Open Folder** shortcuts; history also provides playback.
 
+### Download history (0.1.5)
+
+- Sort by creation time or video title in either direction. Timestamps use your computer's local time zone, and selection stays on the same task after sorting or refreshing.
+- Right-click a record to play, open its folder, redownload, copy its URL or title, or delete it. Double-click to play an existing file or retry a finished task whose file is missing.
+- **Delete Record** and **Clear History** remove only finished task records. Tasks that are downloading, merging, or being verified and the downloaded files are kept. Interrupted tasks remain available for retry after restarting.
+- The page shows the total record count and loads the latest 500 records for sorting. **Clear History** also removes older finished records.
+
 ## YouTube cookie import guide
 
 The current workflow is **export a Cookie TXT from your browser → import it into VidVeya → analyze the video again**. Public videos usually do not require cookies. Members-only, private, and other restricted videos require an account that already has permission to watch them.
 
-Version `0.1.4` also includes brief instructions under **Settings → YouTube Session → How to import Cookie?** (设置 → YouTube 登录态 → 如何导入 Cookie？).
+Brief instructions are also available under **Settings → YouTube Session → How to import Cookie?** (设置 → YouTube 登录态 → 如何导入 Cookie？).
 
 ### Step 1: Sign in using your browser
 

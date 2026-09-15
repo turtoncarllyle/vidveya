@@ -6,6 +6,7 @@ import uuid
 import pytest
 
 from vidveya.engine import cleanup_staging, staging_dir
+from vidveya.models import ACTIVE_STATES
 from vidveya.paths import publish_file, safe_name
 from vidveya.store import Store, timestamp
 
@@ -24,6 +25,40 @@ def test_persistence_and_recovery(tmp_path):
     assert jobs["downloading"]["state"] == "interrupted"
     assert jobs["converting"]["state"] == "interrupted"
     assert jobs["completed"]["state"] == "completed"
+    store.close()
+
+
+def test_deleting_active_records_preserves_restart_recovery(tmp_path):
+    db = tmp_path / "state.db"
+    store = Store(db)
+    for state in ACTIVE_STATES:
+        store.save_job({"id": state, "state": state, "created": timestamp()})
+        store.delete_job(state)
+    store.close()
+
+    reopened = Store(db)
+    reopened.recover()
+    assert {job["id"] for job in reopened.jobs()} == ACTIVE_STATES
+    assert all(job["state"] == "interrupted" for job in reopened.jobs())
+    reopened.close()
+
+
+def test_clear_history_preserves_active_jobs_and_video_files_beyond_display_limit(tmp_path):
+    store = Store(tmp_path / "state.db")
+    video = tmp_path / "已下载的视频.mp4"
+    video.write_bytes(b"keep downloaded media")
+    for index in range(505):
+        state = ("completed", "failed", "cancelled", "interrupted")[index % 4]
+        store.save_job({"id": str(index), "state": state, "created": timestamp(),
+                        "result": {"path": str(video)}})
+    for state in ACTIVE_STATES:
+        store.save_job({"id": state, "state": state, "created": timestamp()})
+
+    assert store.job_count() == 505 + len(ACTIVE_STATES)
+    assert len(store.jobs()) == 500
+    store.clear_jobs()
+    assert {job["id"] for job in store.jobs()} == ACTIVE_STATES
+    assert video.read_bytes() == b"keep downloaded media"
     store.close()
 
 

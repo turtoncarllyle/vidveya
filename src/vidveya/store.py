@@ -35,6 +35,9 @@ class Store:
         rows = self.connection.execute("SELECT data FROM jobs ORDER BY created DESC, rowid DESC LIMIT ?", (limit,))
         return [json.loads(row[0]) for row in rows]
 
+    def job_count(self) -> int:
+        return self.connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+
     def recover(self):
         # Only the single desktop instance may call recovery.
         rows = self.connection.execute("SELECT data FROM jobs").fetchall()
@@ -43,6 +46,25 @@ class Store:
             if job["state"] in ACTIVE_STATES:
                 job.update(state="interrupted", error="上次程序意外退出，任务已中断。可以重新下载。")
                 self.save_job(job)
+
+    def delete_job(self, job_id: str) -> bool:
+        states = sorted(ACTIVE_STATES)
+        placeholders = ",".join("?" for _ in states)
+        with self.connection:
+            cursor = self.connection.execute(
+                f"DELETE FROM jobs WHERE id=? AND json_extract(data, '$.state') NOT IN ({placeholders})",
+                (job_id, *states),
+            )
+        return cursor.rowcount > 0
+
+    def clear_jobs(self) -> int:
+        states = sorted(ACTIVE_STATES)
+        placeholders = ",".join("?" for _ in states)
+        with self.connection:
+            cursor = self.connection.execute(
+                f"DELETE FROM jobs WHERE json_extract(data, '$.state') NOT IN ({placeholders})", states,
+            )
+        return cursor.rowcount
 
     def close(self):
         self.connection.close()

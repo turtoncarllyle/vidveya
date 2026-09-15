@@ -1,15 +1,16 @@
+from datetime import datetime
 import json
 import os
 from pathlib import Path
 import subprocess
 import uuid
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QSignalBlocker, Qt, QUrl
 from PySide6.QtGui import QColor, QFont, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
-    QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton,
+    QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
+    QLabel, QLineEdit, QListView, QMainWindow, QMenu, QMessageBox, QProgressBar, QPushButton,
     QScrollArea, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -17,12 +18,34 @@ from .. import __version__
 from ..auth import clear_cookies, import_cookies, vault_path
 from ..engine import cleanup_staging
 from ..i18n import set_language, t
-from ..models import FormatOption, STATE_LABELS, UserError
+from ..models import ACTIVE_STATES, FormatOption, STATE_LABELS, UserError
 from ..paths import downloads_dir
 from ..processes import WorkerThread
 from ..store import Store, timestamp
 from ..urls import normalize_url, validate_proxy
 from .style import get_theme_stylesheet, resolve_theme
+
+
+def format_local_datetime(iso_str: str) -> str:
+    if not iso_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        local_dt = dt.astimezone()
+        return local_dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        clean = iso_str.replace("T", " ")
+        if "+" in clean:
+            clean = clean.split("+")[0]
+        return clean[:19]
+
+
+def combo_box(accessible_name=""):
+    box = QComboBox()
+    box.setView(QListView())
+    if accessible_name:
+        box.setAccessibleName(accessible_name)
+    return box
 
 
 def label(text="", role="", wrap=False):
@@ -188,10 +211,30 @@ class MainWindow(QMainWindow):
         self.sidebar_mini_task.hide()
         side_layout.addWidget(self.sidebar_mini_task)
 
-        side_layout.addWidget(button(t("nav_exit", "退出软件"), self.request_exit, "Navigation"))
+        footer_frame = QFrame()
+        footer_layout = QVBoxLayout(footer_frame)
+        footer_layout.setContentsMargins(0, 8, 0, 0)
+        footer_layout.setSpacing(6)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: rgba(148, 163, 184, 0.25); border: none;")
+        footer_layout.addWidget(sep)
+
+        self.exit_button = button(f"⏻  {t('nav_exit', '退出软件')}", self.request_exit, "ExitButton")
+        self.exit_button.setToolTip("退出 VidVeya")
+        footer_layout.addWidget(self.exit_button)
+
         self.health_label = label(t("nav_checking", "正在检查组件…"), "Status", True)
-        side_layout.addWidget(self.health_label)
-        side_layout.addWidget(label(f"v{__version__}  ·  Windows", "Eyebrow"))
+        self.health_label.setStyleSheet("font-size: 11px; padding: 2px 4px;")
+        footer_layout.addWidget(self.health_label)
+
+        version_lbl = label(f"v{__version__}  ·  Windows", "Eyebrow")
+        version_lbl.setStyleSheet("padding: 0 4px;")
+        footer_layout.addWidget(version_lbl)
+
+        side_layout.addWidget(footer_frame)
 
         horizontal.addWidget(side)
         horizontal.addWidget(self.pages, 1)
@@ -368,6 +411,26 @@ class MainWindow(QMainWindow):
         layout = self.page(t("hist_heading", "下载记录"),
                            t("hist_subtitle", "成功下载的文件已验证视频轨和音频轨。"))
 
+        # 顶部工具栏（记录总数、多维排序、清空记录）
+        toolbar = QHBoxLayout()
+        self.history_count_label = label(t("hist_total_records", "共 {count} 条记录").format(count=0), "Muted")
+        toolbar.addWidget(self.history_count_label)
+        toolbar.addStretch()
+
+        toolbar.addWidget(label(t("hist_sort_label", "排序") + "：", "Muted"))
+        self.sort_combo = combo_box("排序方式")
+        self.sort_combo.addItem(t("hist_sort_date_desc", "创建时间 (最新)"), "date_desc")
+        self.sort_combo.addItem(t("hist_sort_date_asc", "创建时间 (最早)"), "date_asc")
+        self.sort_combo.addItem(t("hist_sort_name_asc", "视频名称 (A-Z)"), "name_asc")
+        self.sort_combo.addItem(t("hist_sort_name_desc", "视频名称 (Z-A)"), "name_desc")
+        self.sort_combo.currentIndexChanged.connect(self.on_sort_changed)
+        toolbar.addWidget(self.sort_combo)
+
+        self.clear_history_button = button(t("hist_btn_clear", "清空记录"), self.clear_all_history, "DangerSecondary")
+        self.clear_history_button.setEnabled(False)
+        toolbar.addWidget(self.clear_history_button)
+        layout.addLayout(toolbar)
+
         self.history = QTableWidget(0, 4)
         self.history.setHorizontalHeaderLabels([
             t("hist_th_video", "视频"),
@@ -379,12 +442,15 @@ class MainWindow(QMainWindow):
         for index in range(1, 4):
             self.history.horizontalHeader().setSectionResizeMode(index, QHeaderView.ResizeMode.ResizeToContents)
         self.history.verticalHeader().hide()
-        self.history.verticalHeader().setDefaultSectionSize(49)
+        self.history.verticalHeader().setDefaultSectionSize(46)
         self.history.setShowGrid(False)
         self.history.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.history.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.history.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.history.itemSelectionChanged.connect(self.select_history)
+        self.history.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.history.customContextMenuRequested.connect(self.show_history_context_menu)
+        self.history.itemDoubleClicked.connect(self.on_history_double_clicked)
         layout.addWidget(self.history, 1)
 
         self.history_detail = label(t("hist_empty", "尚无下载记录。"), "Muted", True)
@@ -394,13 +460,16 @@ class MainWindow(QMainWindow):
         self.reveal_button = button(t("hist_btn_reveal", "打开所在文件夹"), self.reveal_selected)
         self.play_history_button = button(t("dl_btn_play", "播放视频"), self.play_selected_history)
         self.retry_button = button(t("hist_btn_retry", "重新下载"), self.retry_selected)
+        self.delete_history_button = button(t("hist_btn_delete", "删除记录"), self.delete_selected, "DangerSecondary")
         self.reveal_button.setEnabled(False)
         self.play_history_button.setEnabled(False)
         self.retry_button.setEnabled(False)
+        self.delete_history_button.setEnabled(False)
         buttons.addWidget(self.reveal_button)
         buttons.addWidget(self.play_history_button)
         buttons.addWidget(self.retry_button)
         buttons.addStretch()
+        buttons.addWidget(self.delete_history_button)
         layout.addLayout(buttons)
 
     def _build_settings_page(self):
@@ -417,7 +486,7 @@ class MainWindow(QMainWindow):
 
         app_row = QHBoxLayout()
         app_row.addWidget(label(t("set_theme_label", "界面主题") + "："))
-        self.theme_input = QComboBox()
+        self.theme_input = combo_box("界面主题")
         self.theme_input.addItem(t("set_theme_system", "跟随操作系统"), "system")
         self.theme_input.addItem(t("set_theme_light", "浅色模式"), "light")
         self.theme_input.addItem(t("set_theme_dark", "深色模式"), "dark")
@@ -430,7 +499,7 @@ class MainWindow(QMainWindow):
 
         app_row.addSpacing(20)
         app_row.addWidget(label(t("set_lang_label", "界面语言") + "："))
-        self.language_input = QComboBox()
+        self.language_input = combo_box("界面语言")
         self.language_input.addItem(t("set_lang_system", "跟随操作系统"), "system")
         self.language_input.addItem(t("set_lang_zh", "简体中文"), "zh")
         self.language_input.addItem(t("set_lang_en", "English"), "en")
@@ -513,8 +582,7 @@ class MainWindow(QMainWindow):
         close_layout.addWidget(label(t("set_sec_window", "关闭窗口时"), "Subheading"))
 
         close_row = QHBoxLayout()
-        self.close_action_input = QComboBox()
-        self.close_action_input.setAccessibleName("关闭窗口时的操作")
+        self.close_action_input = combo_box("关闭窗口时的操作")
         self.close_action_input.addItem(t("set_close_minimize", "最小化到任务栏（继续下载）"), "minimize")
         self.close_action_input.addItem(t("set_close_exit", "退出软件"), "exit")
         self.close_action_input.setCurrentIndex(1 if self.store.get_setting("close_action") == "exit" else 0)
@@ -591,14 +659,6 @@ class MainWindow(QMainWindow):
     def reveal_downloaded(self):
         if self.last_downloaded_path and Path(self.last_downloaded_path).is_file():
             subprocess.Popen([str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"), "/select,", str(self.last_downloaded_path)])
-
-    def play_selected_history(self):
-        job = self.selected_job()
-        path = Path(job.get("result", {}).get("path", "")) if job else None
-        if path and path.is_file():
-            os.startfile(path)
-        else:
-            self.history_detail.setText(t("hist_file_missing", "文件已被移动或删除。"))
 
     def directory(self):
         return self.store.get_setting("directory", str(downloads_dir()))
@@ -923,24 +983,91 @@ class MainWindow(QMainWindow):
         self.finish_unsuccessful("interrupted" if self.closing else "cancelled",
                                  "应用退出，任务已中断。" if self.closing else "下载已取消，可在下载记录中重新下载。")
 
+    def on_sort_changed(self):
+        self._render_history_table()
+
+    def _get_sorted_jobs(self):
+        jobs = list(self.history_jobs)
+        sort_key = self.sort_combo.currentData() if hasattr(self, "sort_combo") and self.sort_combo.count() else "date_desc"
+        if sort_key == "date_asc":
+            jobs.sort(key=lambda j: j.get("created", ""))
+        elif sort_key == "name_asc":
+            jobs.sort(key=lambda j: j.get("title", "").lower())
+        elif sort_key == "name_desc":
+            jobs.sort(key=lambda j: j.get("title", "").lower(), reverse=True)
+        else:
+            jobs.sort(key=lambda j: j.get("created", ""), reverse=True)
+        return jobs
+
     def refresh_history(self):
         self.history_jobs = self.store.jobs()
-        self.history.setRowCount(len(self.history_jobs))
-        for row, job in enumerate(self.history_jobs):
-            values = (job["title"], f"{job['option']['resolution']}P · {job['option']['container'].upper()}",
-                      STATE_LABELS.get(job["state"], job["state"]), job["created"].replace("T", " ")[:16] + " UTC")
-            for column, text in enumerate(values):
-                item = QTableWidgetItem(text)
-                item.setToolTip(text)
-                if column == 2 and job["state"] == "completed":
-                    item.setForeground(QColor("#10B981"))
-                self.history.setItem(row, column, item)
-        self.history_detail.setText("选择记录查看详情。" if self.history_jobs else "尚无下载记录。")
+        if hasattr(self, "history_count_label"):
+            total = self.store.job_count()
+            caption = t("hist_total_records", "共 {count} 条记录").format(count=total)
+            if total > len(self.history_jobs):
+                caption += t("hist_shown_records", "（显示最近 {shown} 条）").format(shown=len(self.history_jobs))
+            self.history_count_label.setText(caption)
+        if hasattr(self, "clear_history_button"):
+            self.clear_history_button.setEnabled(any(job["state"] not in ACTIVE_STATES for job in self.history_jobs))
+        self._render_history_table()
+
+    def _render_history_table(self):
+        selected = self.selected_job()
+        selected_id = selected["id"] if selected else None
+        # 刷新或排序后按任务 ID 恢复选择，避免同一行变成另一条记录。
+        with QSignalBlocker(self.history):
+            self.display_jobs = self._get_sorted_jobs()
+            self.history.setRowCount(0)
+            self.history.setRowCount(len(self.display_jobs))
+            for row, job in enumerate(self.display_jobs):
+                state = job.get("state", "")
+                state_text = STATE_LABELS.get(state, state)
+                created_str = format_local_datetime(job.get("created", ""))
+
+                opt = job.get("option", {})
+                res = opt.get("resolution", "")
+                container = opt.get("container", "").upper()
+                format_spec = f"{res}P · {container}" if res else container
+
+                title_item = QTableWidgetItem(job.get("title", ""))
+                title_item.setToolTip(job.get("title", ""))
+                self.history.setItem(row, 0, title_item)
+
+                res_item = QTableWidgetItem(format_spec)
+                res_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.history.setItem(row, 1, res_item)
+
+                if state == "completed":
+                    state_display = f"✓  {state_text}"
+                    color = QColor("#10B981")
+                elif state == "failed":
+                    state_display = f"✕  {state_text}"
+                    color = QColor("#EF4444")
+                elif state in ("cancelled", "interrupted"):
+                    state_display = f"—  {state_text}"
+                    color = QColor("#6B7280")
+                else:
+                    state_display = f"●  {state_text}"
+                    color = QColor("#0078D4")
+
+                state_item = QTableWidgetItem(state_display)
+                state_item.setForeground(color)
+                state_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.history.setItem(row, 2, state_item)
+
+                date_item = QTableWidgetItem(created_str)
+                date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.history.setItem(row, 3, date_item)
+                if job["id"] == selected_id:
+                    self.history.selectRow(row)
+
+        self.history_detail.setText(t("hist_select_hint", "选择记录查看详情。") if self.display_jobs else t("hist_empty", "尚无下载记录。"))
         self.select_history()
 
     def selected_job(self):
         row = self.history.currentRow()
-        return self.history_jobs[row] if 0 <= row < len(self.history_jobs) else None
+        jobs = getattr(self, "display_jobs", self.history_jobs)
+        return jobs[row] if 0 <= row < len(jobs) else None
 
     def select_history(self):
         if not hasattr(self, "reveal_button"):
@@ -950,17 +1077,27 @@ class MainWindow(QMainWindow):
         self.reveal_button.setEnabled(has_file)
         if hasattr(self, "play_history_button"):
             self.play_history_button.setEnabled(has_file)
+        if hasattr(self, "delete_history_button"):
+            self.delete_history_button.setEnabled(bool(job and job["state"] not in ACTIVE_STATES))
         self.retry_button.setEnabled(bool(job and job["state"] in {"completed", "failed", "cancelled", "interrupted"} and not self.downloader))
         if job:
-            self.history_detail.setText(job.get("error") or job.get("result", {}).get("path", "任务正在进行"))
+            self.history_detail.setText(job.get("error") or job.get("result", {}).get("path", t("hist_in_progress", "任务正在进行")))
 
     def reveal_selected(self):
         job = self.selected_job()
         path = Path(job.get("result", {}).get("path", "")) if job else None
         if path and path.is_file():
-            subprocess.Popen([str(Path(os.environ["SystemRoot"]) / "explorer.exe"), "/select,", str(path)])
+            subprocess.Popen([str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"), "/select,", str(path)])
         else:
-            self.history_detail.setText("文件已被移动或删除。")
+            self.history_detail.setText(t("hist_file_missing", "文件已被移动或删除。"))
+
+    def play_selected_history(self):
+        job = self.selected_job()
+        path = Path(job.get("result", {}).get("path", "")) if job else None
+        if path and path.is_file():
+            os.startfile(path)
+        else:
+            self.history_detail.setText(t("hist_file_missing", "文件已被移动或删除。"))
 
     def retry_selected(self):
         job = self.selected_job()
@@ -968,6 +1105,90 @@ class MainWindow(QMainWindow):
             self.pages.setCurrentIndex(0)
             self.navigation.button(0).setChecked(True)
             self.start_job({"url": job["url"], "title": job["title"]}, job["option"])
+
+    def delete_selected(self):
+        job = self.selected_job()
+        if not job or job["state"] in ACTIVE_STATES:
+            return
+        reply = QMessageBox.question(
+            self,
+            t("hist_confirm_delete_title", "删除下载记录"),
+            t("hist_confirm_delete_msg", "确定要从记录中移除此项吗？\n（不会删除已下载的文件）"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.store.delete_job(job["id"])
+            self.refresh_history()
+
+    def clear_all_history(self):
+        if not any(job["state"] not in ACTIVE_STATES for job in self.history_jobs):
+            return
+        reply = QMessageBox.question(
+            self,
+            t("hist_confirm_clear_title", "清空下载记录"),
+            t("hist_confirm_clear_msg", "确定要清空已结束任务的记录吗？\n正在进行的任务和已下载的视频文件会保留。"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.store.clear_jobs()
+            self.refresh_history()
+
+    def show_history_context_menu(self, pos):
+        item = self.history.itemAt(pos)
+        if not item:
+            return
+        row = item.row()
+        self.history.selectRow(row)
+        job = self.selected_job()
+        if not job:
+            return
+
+        menu = QMenu(self)
+        path = Path(job.get("result", {}).get("path", "")) if job.get("result") else None
+        has_file = bool(path and path.is_file())
+
+        play_act = menu.addAction(t("hist_menu_play", "▶  播放视频"))
+        play_act.setEnabled(has_file)
+        play_act.triggered.connect(self.play_selected_history)
+
+        reveal_act = menu.addAction(t("hist_menu_reveal", "📂  打开所在文件夹"))
+        reveal_act.setEnabled(has_file)
+        reveal_act.triggered.connect(self.reveal_selected)
+
+        retry_act = menu.addAction(t("hist_menu_retry", "↺  重新下载"))
+        retry_act.setEnabled(bool(job["state"] in {"completed", "failed", "cancelled", "interrupted"} and not self.downloader))
+        retry_act.triggered.connect(self.retry_selected)
+
+        menu.addSeparator()
+
+        copy_url_act = menu.addAction(t("hist_menu_copy_url", "🔗  复制视频链接"))
+        copy_url_act.triggered.connect(lambda: QApplication.clipboard().setText(job.get("url", "")))
+
+        copy_title_act = menu.addAction(t("hist_menu_copy_title", "📋  复制视频标题"))
+        copy_title_act.triggered.connect(lambda: QApplication.clipboard().setText(job.get("title", "")))
+
+        menu.addSeparator()
+
+        delete_act = menu.addAction(t("hist_menu_delete", "🗑  删除此记录"))
+        delete_act.setEnabled(job["state"] not in ACTIVE_STATES)
+        delete_act.triggered.connect(self.delete_selected)
+
+        try:
+            menu.exec(self.history.viewport().mapToGlobal(pos))
+        finally:
+            menu.deleteLater()
+
+    def on_history_double_clicked(self, item):
+        job = self.selected_job()
+        if not job:
+            return
+        path = Path(job.get("result", {}).get("path", "")) if job.get("result") else None
+        if path and path.is_file():
+            self.play_selected_history()
+        elif not self.downloader and job.get("state") in {"completed", "failed", "cancelled", "interrupted"}:
+            self.retry_selected()
 
     def choose_directory(self):
         chosen = QFileDialog.getExistingDirectory(self, "选择下载保存位置", self.directory_input.text())
