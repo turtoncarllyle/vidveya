@@ -43,7 +43,9 @@ def test_invalid_cookie_error_never_contains_secret(text):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows DPAPI")
-def test_dpapi_round_trip_and_memory_only_cookie_jar(tmp_path):
+def test_dpapi_round_trip_and_memory_only_cookie_jar(tmp_path, monkeypatch):
+    # 此测试验证 DPAPI 和 Cookie 传递，组件可用性由媒体测试与打包诊断覆盖。
+    monkeypatch.setattr("vidveya.engine.tool", lambda name: tmp_path / f"{name}.exe")
     exported = tmp_path / "cookies.txt"
     exported.write_text(COOKIE, encoding="utf-8")
     assert import_cookies(exported) == 1
