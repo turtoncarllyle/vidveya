@@ -169,3 +169,40 @@ def test_declining_exit_does_not_remember_or_force_future_exit(make_window, tmp_
     assert not window.close()
     assert window.isMinimized()
     worker.cancel.assert_not_called()
+
+
+def test_download_progress_shows_percentage_speed_and_eta(make_window, tmp_path):
+    window = make_window()
+    start_fake_download(window, tmp_path)
+    window.show_progress({"state": "downloading", "percent": 47.5, "downloaded_bytes": 47.5 * 1024**2,
+                          "total_bytes": 100 * 1024**2, "speed": 3 * 1024**2, "eta": 17})
+    assert window.progress_value.text() == "47%"
+    assert window.progress_bar.value() == 47
+    assert window.progress_bar.maximum() == 100
+    assert "47.5 MB / 100.0 MB" in window.progress_meta.text()
+    assert "3.0 MB/s" in window.progress_meta.text()
+    assert "剩余 0:17" in window.progress_meta.text()
+
+
+@pytest.mark.parametrize("state, caption", [("downloading", "下载中"), ("merging", "合并中"), ("verifying", "校验中")])
+def test_unknown_percentage_displays_phase_without_fake_completion(make_window, tmp_path, state, caption):
+    window = make_window()
+    start_fake_download(window, tmp_path)
+    window.show_progress({"state": "downloading", "percent": 75})
+    window.show_progress({"state": state, "percent": None, "downloaded_bytes": 1024**2})
+    assert window.progress_value.text() == caption
+    assert window.progress_bar.minimum() == window.progress_bar.maximum() == 0
+    if state == "downloading":
+        assert "总大小待确定" in window.progress_meta.text()
+        assert "1.0 MB" in window.progress_meta.text()
+
+
+def test_progress_only_reaches_100_after_verified_result(make_window, tmp_path):
+    window = make_window()
+    start_fake_download(window, tmp_path)
+    window.show_progress({"state": "downloading", "percent": 100})
+    assert window.progress_value.text() == "99%"
+    window.download_done({"path": str(tmp_path / "有声视频.mp4"), "verification": {"bytes": 1024}})
+    assert window.progress_value.text() == "100%"
+    assert window.progress_bar.value() == 100
+    assert window.store.jobs()[0]["state"] == "completed"

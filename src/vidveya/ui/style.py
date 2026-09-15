@@ -9,6 +9,7 @@ QLabel#Heading { font-size: 25px; font-weight: 700; }
 QLabel#Subheading { font-size: 16px; font-weight: 600; }
 QLabel#Muted { color: #69717E; }
 QLabel#Status { color: #69717E; font-size: 12px; }
+QLabel#ProgressValue { color: #CE2E37; font-size: 16px; font-weight: 700; }
 QFrame#Card { background: #FFFFFF; border: 1px solid #E5E7EC; border-radius: 12px; }
 QFrame#Card QLabel, QFrame#Card QWidget { background: transparent; }
 QPushButton { background: #FFFFFF; border: 1px solid #DCE0E7; border-radius: 7px; padding: 9px 16px; font-weight: 600; }
@@ -31,8 +32,8 @@ QComboBox:focus { border: 2px solid #E33D45; padding: 9px 11px; }
 QTableWidget { background: #FFFFFF; border: 1px solid #E5E7EC; border-radius: 8px; gridline-color: #EEF0F3; selection-background-color: #FFF0F1; selection-color: #20242C; }
 QTableWidget::item { padding: 8px; border: 0; }
 QHeaderView::section { background: #F7F8FA; color: #69717E; padding: 10px 8px; border: 0; border-bottom: 1px solid #E5E7EC; font-weight: 400; }
-QProgressBar { border: 0; border-radius: 4px; background: #ECEEF2; height: 7px; text-align: center; }
-QProgressBar::chunk { border-radius: 4px; background: #E33D45; }
+QProgressBar { border: 0; border-radius: 6px; background: #ECEEF2; text-align: center; }
+QProgressBar::chunk { border-radius: 6px; background: #E33D45; }
 QLabel#Notice { padding: 10px 12px; border-radius: 6px; background: #FFF0F1; color: #AC2630; }
 QScrollArea { border: 0; background: transparent; }
 QScrollBar:vertical { width: 9px; background: transparent; }

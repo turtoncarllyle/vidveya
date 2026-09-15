@@ -20,6 +20,8 @@ Both packages include Qt, yt-dlp, yt-dlp-ejs, FFmpeg, ffprobe, and Deno. The app
 3. Use **Quick download** for 720p and below, or **HD download** for available 1080p, 2K, 4K, and 8K formats.
 4. Choose **Download selected video**.
 
+The download card shows a progress bar, percentage, transferred/total size, speed, and estimated time remaining. When the total size is unknown, the bar shows ongoing activity. Merging and verification show their current stage; 100% is displayed only after verification succeeds.
+
 Every option must have audio. Separate streams are merged automatically, then the result is checked for video, audio, selected resolution, and duration. A missing audio track or failed verification always fails the job; a silent source remains silent.
 
 ### Closing the window

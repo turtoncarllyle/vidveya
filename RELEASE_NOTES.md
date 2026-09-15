@@ -5,6 +5,7 @@
 - 高清下载恢复 `0.1.2` 的逻辑，保留源编码并无损合并音视频，取消耗时的自动 H.264 转码。
 - 设置中可选择关闭窗口时“最小化到任务栏（继续下载）”或“退出软件”，支持操作提示和记住选择。
 - 左侧新增“退出软件”。最小化保持下载运行；退出时确认并保存中断任务，便于重试。
+- 放大下载进度条，显示百分比、已下载/总大小、速度及剩余时间，合并和校验分别显示当前阶段。
 - 仍在通过 ffprobe 校验视频轨、音频轨、清晰度和时长后才显示成功，保留 Qt 启动和安装升级修复。
 - 版本保持 `0.1.3`，安装版和便携版同步更新。设置、历史和下载文件会保留。
 
@@ -15,6 +16,7 @@ AV1/VP9 文件需要支持相应编码的播放器，例如 VLC 或 mpv；本版
 - Restore the `0.1.2` HD download behavior: preserve source codecs and merge video and audio without automatic H.264 transcoding.
 - Add Settings options to minimize to the taskbar or exit when closing, with an optional prompt that can remember the choice.
 - Add an explicit Exit action in the sidebar. Minimizing keeps downloads running; exiting confirms and saves interrupted jobs for retry.
+- Enlarge the progress bar and show percentage, transferred/total size, speed, and ETA, with separate merging and verification states.
 - Continue requiring ffprobe checks for video, audio, resolution, and duration before reporting success. Retain the Qt startup and installer upgrade fixes.
 - Keep version `0.1.3` for both updated packages, preserving settings, history, and downloaded files.
 

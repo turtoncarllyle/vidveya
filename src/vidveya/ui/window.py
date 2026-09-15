@@ -199,7 +199,7 @@ class MainWindow(QMainWindow):
         self.formats.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.formats.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.formats.itemSelectionChanged.connect(self.update_actions)
-        self.formats.setMinimumHeight(170)
+        self.formats.setMinimumHeight(120)
         layout.addWidget(self.formats, 1)
         self.format_hint = label("解析后显示源视频实际提供的清晰度。", "Muted", True)
         layout.addWidget(self.format_hint)
@@ -208,11 +208,18 @@ class MainWindow(QMainWindow):
         self.progress_card.setObjectName("Card")
         progress_layout = QVBoxLayout(self.progress_card)
         self.progress_title = label("准备下载", "Subheading", True)
+        progress_heading = QHBoxLayout()
+        progress_heading.addWidget(self.progress_title, 1)
+        self.progress_value = label("准备中", "ProgressValue")
+        self.progress_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.progress_value.setMinimumWidth(80)
+        progress_heading.addWidget(self.progress_value)
         self.progress_bar = QProgressBar()
+        self.progress_bar.setAccessibleName("下载进度")
         self.progress_bar.setTextVisible(False)
-        self.progress_bar.setFixedHeight(7)
-        self.progress_meta = label("", "Muted")
-        progress_layout.addWidget(self.progress_title)
+        self.progress_bar.setFixedHeight(16)
+        self.progress_meta = label("", "Muted", True)
+        progress_layout.addLayout(progress_heading)
         progress_layout.addWidget(self.progress_bar)
         progress_layout.addWidget(self.progress_meta)
         self.progress_card.hide()
@@ -476,6 +483,7 @@ class MainWindow(QMainWindow):
         self.show_notice("")
         self.progress_card.show()
         self.progress_title.setText("准备下载 · " + job["title"])
+        self.progress_value.setText("准备中")
         self.progress_bar.setRange(0, 0)
         self.progress_meta.setText("正在刷新所选格式和音频")
         self.cancel_button.setText("取消下载")
@@ -507,13 +515,19 @@ class MainWindow(QMainWindow):
         percent = event.get("percent")
         if percent is None:
             self.progress_bar.setRange(0, 0)
+            self.progress_value.setText({"starting": "准备中", "merging": "合并中",
+                                         "verifying": "校验中"}.get(state, "下载中"))
         else:
+            value = max(0, min(99, int(percent)))
             self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(int(percent))
+            self.progress_bar.setValue(value)
+            self.progress_value.setText(f"{value}%")
         if state == "downloading":
             details = "已下载 " + size_text(event.get("downloaded_bytes", 0))
             if event.get("total_bytes"):
                 details += " / " + size_text(event["total_bytes"])
+            else:
+                details += "  ·  总大小待确定"
             if event.get("speed"):
                 details += "  ·  " + size_text(event["speed"]) + "/s"
             if event.get("eta") is not None:
@@ -552,6 +566,7 @@ class MainWindow(QMainWindow):
         self.receipt(self.current_job).unlink(missing_ok=True)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
+        self.progress_value.setText("100%")
         self.progress_title.setText("下载完成 · 已验证画面与声音")
         self.progress_meta.setText(size_text(result["verification"]["bytes"]) + "  ·  " + Path(result["path"]).name)
         self.current_job = None
@@ -572,6 +587,7 @@ class MainWindow(QMainWindow):
             pass
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_value.setText(STATE_LABELS[state])
         self.progress_title.setText(STATE_LABELS[state])
         self.progress_meta.setText("可在下载记录中重新下载")
         self.show_notice(message)
