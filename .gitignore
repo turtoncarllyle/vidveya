@@ -1,0 +1,15 @@
+.venv/
+.build/
+.tooling/
+build/
+dist/
+release/
+artifacts/
+.vidveya-tmp/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+*.log
