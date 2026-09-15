@@ -335,25 +335,6 @@ QComboBox:focus {{
     border: 2px solid {tokens['border_focus']};
     padding: 6px 11px;
 }}
-QComboBox::drop-down {{
-    subcontrol-origin: padding;
-    subcontrol-position: top right;
-    width: 28px;
-    border-left: 0;
-    border-top-right-radius: 8px;
-    border-bottom-right-radius: 8px;
-}}
-QComboBox::down-arrow {{
-    width: 0;
-    height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid {tokens['text_muted']};
-    margin-right: 8px;
-}}
-QComboBox::down-arrow:hover {{
-    border-top-color: {tokens['accent']};
-}}
 QComboBox QAbstractItemView {{
     outline: 0;
     background: {tokens['bg_surface']};
@@ -434,24 +415,6 @@ QHeaderView::section {{
 QHeaderView::section:hover {{
     background: {tokens['bg_hover']};
     color: {tokens['text_main']};
-}}
-QHeaderView::up-arrow {{
-    width: 0;
-    height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-bottom: 5px solid {tokens['accent']};
-    margin-right: 6px;
-    margin-bottom: 2px;
-}}
-QHeaderView::down-arrow {{
-    width: 0;
-    height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid {tokens['accent']};
-    margin-right: 6px;
-    margin-top: 2px;
 }}
 QProgressBar {{
     border: 0;

@@ -2,20 +2,22 @@
 
 ## 中文
 
-- 下载记录新增时间/标题排序、总数显示、右键菜单和双击操作；创建时间使用电脑的本地时区。
+- 下载记录支持点击视频名、清晰度、状态、创建时间的表头排序，再次点击切换升序/降序，并显示方向箭头。清晰度按数值排序，创建时间使用电脑的本地时区。
+- 增加记录总数、右键菜单和双击操作，并在列表上方提示如何使用表头排序。
 - 支持删除单项和清空已结束任务的记录。界面与数据库共同保护正在下载、合并、校验的任务，保留异常退出后的恢复入口；删除记录不会删除视频文件。
 - 修正排序或后台刷新后选择可能指向另一条记录的问题，播放、重试、删除始终使用当前选中的任务。
-- 优化下拉列表、右键菜单、状态标识和侧栏退出按钮的显示，支持浅色与深色主题。
+- 优化下拉列表、右键菜单、状态标识和侧栏退出按钮，修正排序与下拉箭头的显示，支持浅色与深色主题。
 - 页面显示完整记录总数；超过 500 条时明确提示仅展示最近 500 条，“清空记录”涵盖全部已结束任务。
 - 延续原编码下载、无损音视频合并和 ffprobe 校验，不自动转码。保留 Cookie 鉴权、关闭窗口设置及 Qt 启动修复。
 - Windows x64 安装包和便携包统一升级为 `0.1.5`，中英文 README 同步补充记录管理说明。
 
 ## English
 
-- Add time/title sorting, record counts, context menus, and double-click actions to download history. Display creation times in the computer's local time zone.
+- Sort download history by clicking Video, Resolution, Status, or Date headers. Click again to reverse direction, shown by an arrow. Sort resolutions numerically and display times in the computer's local time zone.
+- Add record counts, context menus, double-click actions, and a hint explaining header sorting.
 - Allow deleting individual records and clearing finished tasks. Both the UI and database protect active downloads, merges, and verification tasks so crash recovery stays available. Downloaded files are kept.
 - Keep selection on the same task when sorting or when worker updates refresh the list, preventing actions from targeting a different record.
-- Refine dropdowns, context menus, status indicators, and the sidebar Exit button in light and dark themes.
+- Refine dropdowns, context menus, status indicators, and the sidebar Exit button in light and dark themes. Fix sort and dropdown arrow rendering.
 - Show the full history count and disclose the latest-500 display limit. Clear History covers all finished records.
 - Preserve source codecs, lossless audio/video merging, ffprobe validation, cookie authentication, window-close preferences, and the Qt startup fixes. No automatic transcoding is added.
 - Ship Windows x64 installer and portable packages as `0.1.5`, with updated history instructions in both READMEs.

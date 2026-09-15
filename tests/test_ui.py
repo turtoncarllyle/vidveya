@@ -2,7 +2,7 @@ from unittest.mock import Mock
 import uuid
 
 import pytest
-from PySide6.QtCore import QPoint, QTimer
+from PySide6.QtCore import QPoint, QTimer, Qt
 from PySide6.QtWidgets import QMenu, QMessageBox
 
 from vidveya.formats import build_options
@@ -447,3 +447,45 @@ def test_history_selection_survives_sort_and_refresh(make_window, monkeypatch):
     assert {job["id"] for job in window.store.jobs()} == {"1", "older"}
     assert window.selected_job() is None
     assert not window.delete_history_button.isEnabled()
+
+
+@pytest.mark.parametrize("column, expected, first_order", [
+    (0, ["b", "c", "a"], Qt.SortOrder.AscendingOrder),
+    (1, ["c", "b", "a"], Qt.SortOrder.DescendingOrder),
+    (2, ["c", "b", "a"], Qt.SortOrder.AscendingOrder),
+    (3, ["a", "c", "b"], Qt.SortOrder.AscendingOrder),
+])
+def test_history_header_clicks_sort_and_keep_selected_task(make_window, qtbot, column, expected, first_order):
+    window = make_window()
+    for job_id, title, resolution, state, hour in [
+        ("a", "Zulu", 720, "failed", 1),
+        ("b", "Alpha", 1080, "completed", 3),
+        ("c", "Beta", 2160, "downloading", 2),
+    ]:
+        window.store.save_job({"id": job_id, "title": title, "state": state,
+                               "option": {"resolution": resolution, "container": "mp4"},
+                               "created": f"2026-09-15T0{hour}:00:00+00:00"})
+    window.refresh_history()
+    window.pages.setCurrentIndex(1)
+    window.show()
+    qtbot.wait(50)
+    window.history.selectRow(1)
+    assert window.selected_job()["id"] == "c"
+    assert window.sort_combo.isHidden()
+    header = window.history.horizontalHeader()
+    point = QPoint(header.sectionViewportPosition(column) + header.sectionSize(column) // 2,
+                   header.height() // 2)
+    qtbot.mouseClick(header.viewport(), Qt.MouseButton.LeftButton, pos=point)
+    assert [job["id"] for job in window.display_jobs] == expected
+    assert header.sortIndicatorSection() == column
+    assert header.sortIndicatorOrder() == first_order
+    assert window.selected_job()["id"] == "c"
+    assert not window.delete_history_button.isEnabled()
+
+    qtbot.mouseClick(header.viewport(), Qt.MouseButton.LeftButton, pos=point)
+    assert [job["id"] for job in window.display_jobs] == list(reversed(expected))
+    assert header.sortIndicatorOrder() != first_order
+    assert window.selected_job()["id"] == "c"
+    window.refresh_history()
+    assert [job["id"] for job in window.display_jobs] == list(reversed(expected))
+    assert window.selected_job()["id"] == "c"

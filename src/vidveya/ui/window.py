@@ -411,19 +411,25 @@ class MainWindow(QMainWindow):
         layout = self.page(t("hist_heading", "下载记录"),
                            t("hist_subtitle", "成功下载的文件已验证视频轨和音频轨。"))
 
-        # 顶部工具栏（记录总数、多维排序、清空记录）
+        # 顶部工具栏（记录总数、清空记录与优雅的表头排序提示）
         toolbar = QHBoxLayout()
         self.history_count_label = label(t("hist_total_records", "共 {count} 条记录").format(count=0), "Muted")
         toolbar.addWidget(self.history_count_label)
+
+        tip_label = label("💡 " + t("hist_sort_header_tip", "点击列头可按该列升/降序排序"), "Muted")
+        tip_label.setStyleSheet("font-size: 12px;")
+        toolbar.addSpacing(16)
+        toolbar.addWidget(tip_label)
         toolbar.addStretch()
 
-        toolbar.addWidget(label(t("hist_sort_label", "排序") + "：", "Muted"))
+        # 保持 sort_combo 供向后兼容及底层联动
         self.sort_combo = combo_box("排序方式")
         self.sort_combo.addItem(t("hist_sort_date_desc", "创建时间 (最新)"), "date_desc")
         self.sort_combo.addItem(t("hist_sort_date_asc", "创建时间 (最早)"), "date_asc")
         self.sort_combo.addItem(t("hist_sort_name_asc", "视频名称 (A-Z)"), "name_asc")
         self.sort_combo.addItem(t("hist_sort_name_desc", "视频名称 (Z-A)"), "name_desc")
         self.sort_combo.currentIndexChanged.connect(self.on_sort_changed)
+        self.sort_combo.hide()
         toolbar.addWidget(self.sort_combo)
 
         self.clear_history_button = button(t("hist_btn_clear", "清空记录"), self.clear_all_history, "DangerSecondary")
@@ -438,9 +444,17 @@ class MainWindow(QMainWindow):
             t("hist_th_state", "状态"),
             t("hist_th_date", "创建时间")
         ])
-        self.history.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header = self.history.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for index in range(1, 4):
-            self.history.horizontalHeader().setSectionResizeMode(index, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(index, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionsClickable(True)
+        header.setSortIndicatorShown(True)
+        self.current_sort_column = 3
+        self.current_sort_order = Qt.SortOrder.DescendingOrder
+        header.setSortIndicator(self.current_sort_column, self.current_sort_order)
+        header.sectionClicked.connect(self.on_header_section_clicked)
+
         self.history.verticalHeader().hide()
         self.history.verticalHeader().setDefaultSectionSize(46)
         self.history.setShowGrid(False)
@@ -983,18 +997,81 @@ class MainWindow(QMainWindow):
         self.finish_unsuccessful("interrupted" if self.closing else "cancelled",
                                  "应用退出，任务已中断。" if self.closing else "下载已取消，可在下载记录中重新下载。")
 
+    def on_header_section_clicked(self, column: int):
+        if getattr(self, "current_sort_column", None) == column:
+            self.current_sort_order = (
+                Qt.SortOrder.AscendingOrder
+                if self.current_sort_order == Qt.SortOrder.DescendingOrder
+                else Qt.SortOrder.DescendingOrder
+            )
+        else:
+            self.current_sort_column = column
+            if column in (1, 3):
+                self.current_sort_order = Qt.SortOrder.DescendingOrder
+            else:
+                self.current_sort_order = Qt.SortOrder.AscendingOrder
+
+        self.history.horizontalHeader().setSortIndicator(self.current_sort_column, self.current_sort_order)
+        self._sync_sort_combo_from_header()
+        self._render_history_table()
+
+    def _sync_sort_combo_from_header(self):
+        if not hasattr(self, "sort_combo"):
+            return
+        mapping = {
+            (3, Qt.SortOrder.DescendingOrder): "date_desc",
+            (3, Qt.SortOrder.AscendingOrder): "date_asc",
+            (0, Qt.SortOrder.AscendingOrder): "name_asc",
+            (0, Qt.SortOrder.DescendingOrder): "name_desc",
+        }
+        key = mapping.get((self.current_sort_column, self.current_sort_order))
+        if key:
+            idx = self.sort_combo.findData(key)
+            if idx >= 0:
+                with QSignalBlocker(self.sort_combo):
+                    self.sort_combo.setCurrentIndex(idx)
+
     def on_sort_changed(self):
+        sort_key = self.sort_combo.currentData() if hasattr(self, "sort_combo") and self.sort_combo.count() else "date_desc"
+        if sort_key == "date_desc":
+            self.current_sort_column = 3
+            self.current_sort_order = Qt.SortOrder.DescendingOrder
+        elif sort_key == "date_asc":
+            self.current_sort_column = 3
+            self.current_sort_order = Qt.SortOrder.AscendingOrder
+        elif sort_key == "name_asc":
+            self.current_sort_column = 0
+            self.current_sort_order = Qt.SortOrder.AscendingOrder
+        elif sort_key == "name_desc":
+            self.current_sort_column = 0
+            self.current_sort_order = Qt.SortOrder.DescendingOrder
+
+        if hasattr(self, "history"):
+            self.history.horizontalHeader().setSortIndicator(self.current_sort_column, self.current_sort_order)
         self._render_history_table()
 
     def _get_sorted_jobs(self):
         jobs = list(self.history_jobs)
-        sort_key = self.sort_combo.currentData() if hasattr(self, "sort_combo") and self.sort_combo.count() else "date_desc"
-        if sort_key == "date_asc":
-            jobs.sort(key=lambda j: j.get("created", ""))
-        elif sort_key == "name_asc":
-            jobs.sort(key=lambda j: j.get("title", "").lower())
-        elif sort_key == "name_desc":
-            jobs.sort(key=lambda j: j.get("title", "").lower(), reverse=True)
+        col = getattr(self, "current_sort_column", 3)
+        order = getattr(self, "current_sort_order", Qt.SortOrder.DescendingOrder)
+        is_reverse = (order == Qt.SortOrder.DescendingOrder)
+
+        if col == 0:
+            jobs.sort(key=lambda j: (j.get("title") or "").lower(), reverse=is_reverse)
+        elif col == 1:
+            def parse_res(j):
+                res_str = str(j.get("option", {}).get("resolution", ""))
+                digits = "".join(filter(str.isdigit, res_str))
+                return int(digits) if digits else 0
+            jobs.sort(key=parse_res, reverse=is_reverse)
+        elif col == 2:
+            state_priority = {
+                "downloading": 1, "merging": 2, "verifying": 3, "starting": 4,
+                "completed": 5, "failed": 6, "cancelled": 7, "interrupted": 8,
+            }
+            jobs.sort(key=lambda j: (state_priority.get(j.get("state", ""), 99), (j.get("title") or "").lower()), reverse=is_reverse)
+        elif col == 3:
+            jobs.sort(key=lambda j: j.get("created", ""), reverse=is_reverse)
         else:
             jobs.sort(key=lambda j: j.get("created", ""), reverse=True)
         return jobs

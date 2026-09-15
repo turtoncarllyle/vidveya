@@ -38,7 +38,7 @@ The sidebar shows the current download's progress even when viewing history or s
 
 ### Download history (0.1.5)
 
-- Sort by creation time or video title in either direction. Timestamps use your computer's local time zone, and selection stays on the same task after sorting or refreshing.
+- Click the Video, Resolution, Status, or Date column header to sort; click again to reverse the direction shown by the arrow. Resolutions sort numerically. Timestamps use your computer's local time zone, and selection stays on the same task after sorting or refreshing.
 - Right-click a record to play, open its folder, redownload, copy its URL or title, or delete it. Double-click to play an existing file or retry a finished task whose file is missing.
 - **Delete Record** and **Clear History** remove only finished task records. Tasks that are downloading, merging, or being verified and the downloaded files are kept. Interrupted tasks remain available for retry after restarting.
 - The page shows the total record count and loads the latest 500 records for sorting. **Clear History** also removes older finished records.
