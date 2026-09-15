@@ -1,5 +1,7 @@
 # VidVeya
 
+[简体中文](README.md) · [English](README.en.md)
+
 **Windows 本地 YouTube 视频下载助手 · 保留画面与声音 / Local Windows YouTube video downloader · video and audio preserved**
 
 VidVeya 是一个独立的 Windows 桌面应用：粘贴 YouTube 或 Shorts 链接，选择源视频实际提供的清晰度，下载完成后由 FFmpeg 合并并由 ffprobe 验证视频轨和音频轨。下载和合并都在本机完成，没有 VidVeya 服务端，也不要求用户另外安装 Python、Node.js、FFmpeg 或 Deno。
@@ -28,18 +30,52 @@ VidVeya 是一个独立的 Windows 桌面应用：粘贴 YouTube 或 Shorts 链�
 
 在“设置 → 关闭窗口时”选择“最小化到任务栏（继续下载）”或“退出软件”，点击“保存设置”立即生效。默认关闭时会提示最小化；可在提示中勾选“记住我的选择，不再提示”，或在设置中关闭提示。最小化不会中断任务，点击任务栏图标即可恢复窗口。左侧“退出软件”始终可以退出；有下载进行时会再次确认，并将中断任务保存在下载记录中供重试。
 
-## 会员、私有和受限视频
+## YouTube Cookie 导入指南
 
-VidVeya 只使用用户已有的合法观看权限，不绕过 YouTube 的访问控制。频道会员或私有视频需要用户在 YouTube 中具备对应权限，并在“设置 → YouTube 登录态”中主动导入该账号导出的 Netscape 格式 Cookie TXT。登录态会用 Windows DPAPI 加密保存于本机，仅当前 Windows 用户可读取；VidVeya 不上传 Cookie。
+当前版本采用“**浏览器导出 Cookie TXT → 导入 VidVeya → 重新解析下载**”的方式。普通公开视频通常不需要导入 Cookie；下载会员、私有等受限视频时，账号必须原本就有观看权限。
 
-Cookie 导入步骤：
+### 第一步：在浏览器中登录
 
-1. 在已登录且有权限的浏览器配置中，使用可信的 Cookie 导出工具导出 YouTube 站点 Cookie。
-2. 确保文件是 Netscape Cookie TXT 格式，而不是 JSON 或请求头文本。
-3. 在 VidVeya 设置中点击“导入 Cookie”，勾选“使用已导入的登录态”。
-4. 重新解析视频。会员资格、登录状态和地区权限仍由 YouTube 服务器校验。
+以 Chrome 为例，打开 YouTube，登录自己的账号，并确认该账号能正常播放要下载的视频。会员视频还需要对应频道和会员等级的权限。
 
-Cookie 是敏感登录凭据，请只导入自己的账号并在不再需要时点击“清除”。不要把 Cookie 文件、数据库或日志提交到 GitHub。
+### 第二步：导出 Cookie TXT
+
+1. 安装开源扩展 [Get cookies.txt LOCALLY（Chrome 扩展商店）](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)。[查看扩展源码](https://github.com/kairi003/Get-cookies.txt-LOCALLY)。
+2. 保持在**已登录的 YouTube 页面**，点击浏览器右上角的扩展菜单，打开该扩展。
+3. 选择 **Netscape** 格式，导出当前 YouTube 站点的 Cookie，保存为 TXT 文件，例如 `cookies.txt`。
+
+不要选 JSON，不要复制浏览器开发者工具里的请求头，也不需要导出所有网站。VidVeya 接受 UTF-8 编码的 Netscape Cookie TXT，文件大小不超过 2 MB。
+
+### 第三步：导入 VidVeya
+
+1. 打开 **设置 → YouTube 登录态**，点击 **导入 Cookie**。
+2. 选择刚才保存的 TXT 文件。
+3. 出现“已加密保存 … 条 YouTube Cookie”表示文件导入成功。**使用已导入的登录态**会自动勾选，**不需要再次点击“保存设置”**。
+
+### 第四步：重新解析并下载
+
+返回 **新建下载**，粘贴视频链接，点击 **解析视频**，选择清晰度后下载。导入成功只表示文件已经读取并保存；账号登录是否有效、会员资格及视频权限仍由 YouTube 服务器校验。
+
+### 常见问题
+
+| 情况 | 处理方法 |
+| --- | --- |
+| 提示格式错误 | 重新选择 Netscape 格式导出；把 JSON 文件改名为 TXT 无效。 |
+| 文件中没有有效的 YouTube Cookie | 确认已登录、当前页面是 YouTube，然后重新导出该站点的 Cookie。 |
+| 提示登录态过期 | 在浏览器重新登录后，重新导出并导入。 |
+| 导入成功，但仍提示需要会员权限 | 检查导出的账号、对应频道和会员等级；YouTube Premium 不等于频道会员。 |
+| 不再需要使用登录态 | 在“设置 → YouTube 登录态”点击“清除”，后续任务改为未登录访问。 |
+
+#### Cookie 很快失效怎么办？
+
+YouTube 可能会更新浏览器中的登录 Cookie。如果刚导出的文件很快失效，可按 [yt-dlp 官方导出说明](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies) 使用独立的无痕会话：
+
+1. 在 Chrome 扩展管理中打开该导出扩展的“详细信息”，允许它在无痕模式下运行。
+2. 关闭其他无痕窗口，再新建一个无痕窗口，登录有观看权限的 YouTube 账号。
+3. 在**同一个标签页**打开 [YouTube robots.txt](https://www.youtube.com/robots.txt)，保持只有这一个无痕标签页，再用扩展导出 YouTube 的 Netscape Cookie TXT。
+4. 导出后直接关闭无痕窗口，再将文件导入 VidVeya；不要继续在该无痕会话中浏览 YouTube。此方法可减少浏览器更新 Cookie 导致的失效，但不保证登录态永久有效。
+
+Cookie 相当于登录凭据，请勿发送给他人或上传到 GitHub。VidVeya 使用 Windows DPAPI 在本机加密保存登录态，下载时向 YouTube 提供它以验证权限。导入成功后可以删除导出的明文 TXT 文件。
 
 ## 当前边界
 

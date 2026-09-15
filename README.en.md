@@ -1,5 +1,7 @@
 # VidVeya
 
+[简体中文](README.md) · [English](README.en.md)
+
 **A local Windows YouTube downloader that keeps video and audio together / Windows 本地 YouTube 视频下载助手 · 保留画面与声音**
 
 VidVeya is a standalone Windows desktop app. Paste a YouTube or Shorts URL, choose a source resolution, and download it locally. yt-dlp resolves the streams, FFmpeg merges separate video and audio, and ffprobe verifies the result before VidVeya reports success. No VidVeya server is involved, and users do not need to install Python, Node.js, FFmpeg, or Deno separately.
@@ -28,11 +30,52 @@ Every option must have audio. Separate streams are merged automatically, then th
 
 In **Settings → When closing the window**, choose **Minimize to taskbar (keep downloading)** or **Exit application**, then save. By default, closing shows a prompt with minimize selected. Check **Remember my choice, do not ask again** in that prompt, or disable prompts in Settings. Minimizing keeps downloads running; use the taskbar to restore the window. The sidebar **Exit application** action always allows you to quit. Exiting during a download requires confirmation and saves the interrupted job in history for retry. The application UI is in Simplified Chinese.
 
-## Members-only, private, and restricted videos
+## YouTube cookie import guide
 
-VidVeya uses only access the user already has and does not bypass YouTube access controls. For a members-only or private video, the logged-in YouTube account must already be authorized. In **Settings → YouTube session**, the user may import a Netscape-format Cookie TXT exported for that account. The session is encrypted with Windows DPAPI and stored locally for the current Windows user; VidVeya never uploads cookies.
+The current workflow is **export a Cookie TXT from your browser → import it into VidVeya → analyze the video again**. Public videos usually do not require cookies. Members-only, private, and other restricted videos require an account that already has permission to watch them.
 
-Cookies are sensitive credentials. Import only your own account, clear them when no longer needed, and never commit the cookie file, database, or logs to GitHub.
+### Step 1: Sign in using your browser
+
+Using Chrome as an example, open YouTube, sign in to your own account, and confirm that it can play the video. Members-only content requires access to the relevant channel and membership tier.
+
+### Step 2: Export a Cookie TXT
+
+1. Install the open-source extension [Get cookies.txt LOCALLY from the Chrome Web Store](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc). [View its source code](https://github.com/kairi003/Get-cookies.txt-LOCALLY).
+2. Keep the **signed-in YouTube page** active, open Chrome's extensions menu, and select the extension.
+3. Choose **Netscape** format and export the current YouTube site's cookies to a TXT file, for example `cookies.txt`.
+
+Do not choose JSON or copy a request header from developer tools. You do not need to export all websites. VidVeya accepts UTF-8 Netscape Cookie TXT files up to 2 MB.
+
+### Step 3: Import into VidVeya
+
+1. Open **设置 → YouTube 登录态** and click **导入 Cookie** (Import cookies).
+2. Select the exported TXT file.
+3. A message beginning with “已加密保存 … 条 YouTube Cookie” confirms that the file was imported. **使用已导入的登录态** (Use imported session) is enabled automatically. **There is no need to click Save settings again.**
+
+### Step 4: Analyze and download again
+
+Return to **新建下载** (New download), paste the URL, click **解析视频** (Analyze video), and select a resolution to download. A successful import confirms that the file was read and saved; YouTube still verifies the session, membership, and video access permissions.
+
+### Troubleshooting
+
+| Situation | What to do |
+| --- | --- |
+| Invalid format | Export again in Netscape format. Renaming JSON to TXT does not convert it. |
+| No valid YouTube cookies | Confirm that you are signed in and the active page is YouTube, then export that site's cookies again. |
+| Expired session | Sign in again in the browser, then export and import a fresh file. |
+| Import succeeds but membership is still required | Check the exported account, channel, and membership tier. YouTube Premium is different from channel membership. |
+| The session is no longer needed | Click **清除** (Clear) under YouTube session; later jobs use signed-out access. |
+
+#### What if cookies stop working soon after export?
+
+YouTube can rotate account cookies in the browser. If exported cookies quickly stop working, follow the [official yt-dlp export guidance](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies) using a separate incognito session:
+
+1. In Chrome's extension manager, open the export extension's details and allow it to run in incognito mode.
+2. Close other incognito windows, open a new one, and sign in to the YouTube account with viewing access.
+3. In the **same tab**, open [YouTube robots.txt](https://www.youtube.com/robots.txt). Keep this as the only incognito tab, then export YouTube cookies in Netscape format using the extension.
+4. Close the incognito window immediately after exporting, then import the file into VidVeya. Do not continue browsing YouTube in that session. This reduces browser-driven cookie rotation; it does not make the session permanent.
+
+Cookies are login credentials: do not share them or upload them to GitHub. VidVeya encrypts the imported session locally using Windows DPAPI and supplies it to YouTube when authenticating downloads. After a successful import, you can delete the exported plaintext TXT file.
 
 ## Boundaries
 
