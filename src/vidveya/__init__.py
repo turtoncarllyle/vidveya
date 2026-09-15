@@ -1,3 +1,3 @@
 """VidVeya desktop YouTube downloader."""
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"

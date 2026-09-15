@@ -9,6 +9,32 @@ from .paths import components_dir
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+def needs_compatible_mp4(video_codec: str, container: str) -> bool:
+    """Return whether a selected MP4 needs conversion for broad Windows playback."""
+    if container.lower() != "mp4":
+        return False
+    codec = (video_codec or "").lower()
+    return not codec.startswith(("avc", "h264"))
+
+
+def transcode_compatible_mp4(source: Path, destination: Path) -> None:
+    """Convert AV1/VP9 MP4 video to H.264 while copying the audio stream."""
+    base = [str(tool("ffmpeg")), "-y", "-i", str(source), "-map", "0:v:0", "-map", "0:a:0",
+            "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart"]
+    attempts = [base + ["-c:v", "h264_mf", "-rate_control", "quality", "-quality", "90", str(destination)],
+                base + ["-c:v", "libopenh264", "-profile:v", "high", "-b:v", "8M", str(destination)]]
+    last_error = ""
+    for command in attempts:
+        destination.unlink(missing_ok=True)
+        process = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                 timeout=6 * 60 * 60, creationflags=NO_WINDOW)
+        if process.returncode == 0 and destination.is_file() and destination.stat().st_size > 0:
+            return
+        last_error = (process.stderr or process.stdout or "FFmpeg 转换失败").strip()[-800:]
+    destination.unlink(missing_ok=True)
+    raise UserError("高清视频兼容转换失败：" + last_error)
+
+
 def tool(name: str) -> Path:
     path = components_dir() / f"{name}.exe"
     if not path.is_file():

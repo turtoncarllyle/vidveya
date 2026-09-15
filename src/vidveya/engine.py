@@ -12,7 +12,7 @@ import yt_dlp
 
 from .auth import cookie_stream
 from .formats import build_options, select_exact
-from .media import tool, verify_media
+from .media import needs_compatible_mp4, tool, transcode_compatible_mp4, verify_media
 from .models import UserError, VideoInfo
 from .paths import publish_file, safe_name
 from .urls import normalize_url, validate_proxy
@@ -173,7 +173,8 @@ def download(request: dict, emit: Emit) -> dict:
             info = checked_info(ydl, url)
             choice = select_exact(build_options(info), request["option_key"])
             free = shutil.disk_usage(directory).free
-            if choice.estimated_bytes and free < int(choice.estimated_bytes * 2.15) + 64 * 1024 * 1024:
+            storage_factor = 3.2 if needs_compatible_mp4(choice.video_codec, choice.container) else 2.15
+            if choice.estimated_bytes and free < int(choice.estimated_bytes * storage_factor) + 64 * 1024 * 1024:
                 raise UserError("磁盘空间不足以同时保存音视频和合并文件，请更换保存目录或释放空间。")
             selected_ids.update([choice.video_id] + ([choice.audio_id] if choice.audio_id else []))
             for fmt in info["formats"]:
@@ -185,6 +186,12 @@ def download(request: dict, emit: Emit) -> dict:
             ydl.format_selector = ydl.build_format_selector(choice.selector)
             ydl.process_ie_result(info, download=True)
         output = stage / f"payload.{choice.container}"
+        if needs_compatible_mp4(choice.video_codec, choice.container):
+            emit({"event": "progress", "state": "converting", "percent": None})
+            compatible = stage / "payload.compat.mp4"
+            transcode_compatible_mp4(output, compatible)
+            output.unlink()
+            compatible.replace(output)
         emit({"event": "progress", "state": "verifying", "percent": None})
         verification = verify_media(output, choice.resolution, float(info["duration"]))
         filename = safe_name(str(info.get("title") or "YouTube 视频"), str(info["id"]), choice.resolution, choice.container)

@@ -1,3 +1,13 @@
+# v0.1.3
+
+## 中文
+
+修复高清 MP4 在部分 Windows 播放器中只有声音没有画面的兼容性问题。源视频为 AV1/VP9 时，VidVeya 使用内置 FFmpeg 转换为 H.264，并无损复制音频；H.264 源仍采用无损合并。
+
+## English
+
+Fixes high-definition MP4 files that played audio without video in Windows players lacking AV1/VP9 decoding. When the source uses AV1 or VP9, VidVeya uses the bundled FFmpeg to convert video to H.264 while copying audio without re-encoding; H.264 sources still use lossless remuxing.
+
 # v0.1.2
 
 ## 中文

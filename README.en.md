@@ -33,7 +33,7 @@ Cookies are sensitive credentials. Import only your own account, clear them when
 - Public on-demand videos, public Shorts, and content the user is legally authorized to watch are supported.
 - Live recording, playlist batching, DRM bypass, region bypass, and unauthorized access are not supported.
 - Resolution is identified by the shorter video dimension, so 1080×1920 is shown as 1080p.
-- MP4/H.264 is preferred when YouTube provides it. If only AV1 or VP9 is available, VidVeya shows the codec so the user can choose a compatible player.
+- MP4/H.264 is preferred when YouTube provides it. For high-definition MP4 selections where the source only provides AV1 or VP9, VidVeya locally converts the video to broadly compatible H.264 while copying the audio stream. Conversion needs extra time and temporary disk space.
 
 ## Development
 

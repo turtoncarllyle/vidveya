@@ -48,9 +48,9 @@ class VideoInfo:
         return asdict(self)
 
 
-ACTIVE_STATES = {"starting", "downloading", "merging", "verifying"}
+ACTIVE_STATES = {"starting", "downloading", "merging", "converting", "verifying"}
 STATE_LABELS = {
     "starting": "准备下载", "downloading": "正在下载", "merging": "正在合并",
-    "verifying": "正在校验", "completed": "下载完成", "failed": "下载失败",
+    "converting": "正在转换为兼容 MP4", "verifying": "正在校验", "completed": "下载完成", "failed": "下载失败",
     "cancelled": "已取消", "interrupted": "已中断",
 }

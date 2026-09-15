@@ -418,12 +418,13 @@ class MainWindow(QMainWindow):
                     font = QFont("Bahnschrift", 12)
                     font.setBold(True)
                     item.setFont(font)
-                item.setToolTip(f"{option.width} × {option.height}\n视频：{option.video_codec}\n音频：{option.audio_codec}\n无损合并，不重新编码")
+                conversion = "\n高清 MP4 将转换为兼容 H.264；音频无损复制" if option.container == "mp4" and not option.video_codec.lower().startswith(("avc", "h264")) else "\n无损合并，不重新编码"
+                item.setToolTip(f"{option.width} × {option.height}\n视频：{option.video_codec}\n音频：{option.audio_codec}{conversion}")
                 self.formats.setItem(row, column, item)
         if self.visible_options:
             target = next((index for index, item in enumerate(self.visible_options) if item.resolution == (720 if self.quick else 1080) and item.container == "mp4"), 0)
             self.formats.selectRow(target)
-        self.format_hint.setText("大小为估计值，实际下载后可能不同。高分辨率 AV1 / VP9 文件需要播放器支持相应编码。" if options
+        self.format_hint.setText("大小为估计值，实际下载后可能不同。高清 MP4 若源编码为 AV1 / VP9，会自动转换为兼容 H.264。" if options
                                  else "解析后显示源视频实际提供的清晰度。")
         if options and not self.visible_options:
             self.format_hint.setText("源视频未提供此档位，请切换下载方式。")
@@ -498,6 +499,7 @@ class MainWindow(QMainWindow):
             self.progress_meta.setText(details)
         else:
             self.progress_meta.setText({"starting": "正在刷新所选格式和音频", "merging": "正在无损合并画面与声音",
+                                        "converting": "正在转换为兼容 H.264 MP4（音频无损复制）",
                                         "verifying": "正在检查视频轨、音频轨和时长"}.get(state, ""))
 
     def receipt(self, job):
