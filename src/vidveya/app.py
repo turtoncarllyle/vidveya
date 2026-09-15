@@ -48,7 +48,7 @@ def main():
             destination = Path(args.screenshot).resolve()
             destination.parent.mkdir(parents=True, exist_ok=True)
             window.grab().save(str(destination))
-            window.close()
+            window.request_exit()
         QTimer.singleShot(6000, capture)
     try:
         return application.exec()

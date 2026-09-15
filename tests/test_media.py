@@ -2,16 +2,9 @@ import subprocess
 
 import pytest
 
-from vidveya.media import NO_WINDOW, needs_compatible_mp4, tool, verify_media
+from vidveya.media import NO_WINDOW, tool, verify_media
 from vidveya.models import UserError
 from vidveya.paths import components_dir
-
-
-def test_non_h264_mp4_uses_compatibility_conversion():
-    assert needs_compatible_mp4("av01.0.08M.08", "mp4")
-    assert needs_compatible_mp4("vp09.00.51.00", "mp4")
-    assert not needs_compatible_mp4("avc1.640028", "mp4")
-    assert not needs_compatible_mp4("av01.0.08M.08", "webm")
 
 
 @pytest.fixture(scope="module")

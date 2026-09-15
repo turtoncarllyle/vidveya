@@ -48,9 +48,10 @@ class VideoInfo:
         return asdict(self)
 
 
+# 保留 converting，仅用于恢复早期 0.1.3 遗留的中断任务。
 ACTIVE_STATES = {"starting", "downloading", "merging", "converting", "verifying"}
 STATE_LABELS = {
     "starting": "准备下载", "downloading": "正在下载", "merging": "正在合并",
-    "converting": "正在转换为兼容 MP4", "verifying": "正在校验", "completed": "下载完成", "failed": "下载失败",
+    "verifying": "正在校验", "completed": "下载完成", "failed": "下载失败",
     "cancelled": "已取消", "interrupted": "已中断",
 }

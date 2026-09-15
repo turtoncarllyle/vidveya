@@ -22,6 +22,10 @@ Both packages include Qt, yt-dlp, yt-dlp-ejs, FFmpeg, ffprobe, and Deno. The app
 
 Every option must have audio. Separate streams are merged automatically, then the result is checked for video, audio, selected resolution, and duration. A missing audio track or failed verification always fails the job; a silent source remains silent.
 
+### Closing the window
+
+In **Settings → When closing the window**, choose **Minimize to taskbar (keep downloading)** or **Exit application**, then save. By default, closing shows a prompt with minimize selected. Check **Remember my choice, do not ask again** in that prompt, or disable prompts in Settings. Minimizing keeps downloads running; use the taskbar to restore the window. The sidebar **Exit application** action always allows you to quit. Exiting during a download requires confirmation and saves the interrupted job in history for retry. The application UI is in Simplified Chinese.
+
 ## Members-only, private, and restricted videos
 
 VidVeya uses only access the user already has and does not bypass YouTube access controls. For a members-only or private video, the logged-in YouTube account must already be authorized. In **Settings → YouTube session**, the user may import a Netscape-format Cookie TXT exported for that account. The session is encrypted with Windows DPAPI and stored locally for the current Windows user; VidVeya never uploads cookies.
@@ -33,7 +37,7 @@ Cookies are sensitive credentials. Import only your own account, clear them when
 - Public on-demand videos, public Shorts, and content the user is legally authorized to watch are supported.
 - Live recording, playlist batching, DRM bypass, region bypass, and unauthorized access are not supported.
 - Resolution is identified by the shorter video dimension, so 1080×1920 is shown as 1080p.
-- MP4/H.264 is preferred when YouTube provides it. For high-definition MP4 selections where the source only provides AV1 or VP9, VidVeya locally converts the video to broadly compatible H.264 while copying the audio stream. Conversion needs extra time and temporary disk space.
+- HD downloads use the `0.1.2` behavior: preserve source video and audio codecs and merge without re-encoding. H.264 is preferred for MP4 at the same resolution when available; AV1/VP9 sources keep their original codecs. Use a player with the corresponding decoder, such as VLC or mpv. An MP4 extension alone does not guarantee player compatibility.
 
 ## Development
 

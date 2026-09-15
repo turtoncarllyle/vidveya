@@ -8,9 +8,9 @@ from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QFont, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QCheckBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
+    QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton,
-    QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QScrollArea, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from .. import __version__
@@ -75,6 +75,7 @@ class MainWindow(QMainWindow):
         self.visible_options = []
         self.quick = False
         self.closing = False
+        self._exit_requested = False
         self.network = QNetworkAccessManager(self)
         self.thumbnail_reply = None
         self.ready = False
@@ -113,6 +114,7 @@ class MainWindow(QMainWindow):
         self.navigation.idClicked.connect(self.pages.setCurrentIndex)
         self.navigation.button(0).setChecked(True)
         side_layout.addStretch()
+        side_layout.addWidget(button("退出软件", self.request_exit, "Navigation"))
         self.health_label = label("正在检查组件…", "Status", True)
         side_layout.addWidget(self.health_label)
         side_layout.addWidget(label(f"v{__version__}  ·  Windows", "Eyebrow"))
@@ -123,14 +125,21 @@ class MainWindow(QMainWindow):
         self._build_settings_page()
         self.setCentralWidget(root)
 
-    def page(self, heading, subtitle):
+    def page(self, heading, subtitle, scroll=False):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(30, 28, 30, 24)
         layout.setSpacing(16)
         layout.addWidget(label(heading, "Heading"))
         layout.addWidget(label(subtitle, "Muted", True))
-        self.pages.addWidget(page)
+        if scroll:
+            area = QScrollArea()
+            area.setWidgetResizable(True)
+            area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            area.setWidget(page)
+            self.pages.addWidget(area)
+        else:
+            self.pages.addWidget(page)
         return layout
 
     def _build_download_page(self):
@@ -249,7 +258,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(buttons)
 
     def _build_settings_page(self):
-        layout = self.page("设置", "下载偏好与组件状态都保存在这台电脑上。")
+        layout = self.page("设置", "下载偏好与组件状态都保存在这台电脑上。", scroll=True)
         layout.addWidget(label("保存位置", "Subheading"))
         row = QHBoxLayout()
         self.directory_input = QLineEdit(self.directory())
@@ -263,6 +272,19 @@ class MainWindow(QMainWindow):
         self.proxy_input.setPlaceholderText("例如 http://127.0.0.1:7890；留空使用系统网络设置")
         layout.addWidget(self.proxy_input)
         layout.addWidget(label("浏览器中的代理扩展不会自动影响桌面助手。代理配置仅保存在本机。", "Muted", True))
+        layout.addWidget(label("关闭窗口时", "Subheading"))
+        close_row = QHBoxLayout()
+        self.close_action_input = QComboBox()
+        self.close_action_input.setAccessibleName("关闭窗口时的操作")
+        self.close_action_input.addItem("最小化到任务栏（继续下载）", "minimize")
+        self.close_action_input.addItem("退出软件", "exit")
+        self.close_action_input.setCurrentIndex(1 if self.store.get_setting("close_action") == "exit" else 0)
+        close_row.addWidget(self.close_action_input, 1)
+        self.close_prompt_input = QCheckBox("关闭时显示操作提示")
+        self.close_prompt_input.setChecked(self.store.get_setting("confirm_close", True))
+        close_row.addWidget(self.close_prompt_input)
+        layout.addLayout(close_row)
+        layout.addWidget(label("最小化后可从任务栏恢复窗口；左侧“退出软件”可直接退出。", "Muted", True))
         save_row = QHBoxLayout()
         save_row.addWidget(button("保存设置", self.save_settings, "Primary"))
         self.settings_notice = label("", "Muted", True)
@@ -296,6 +318,7 @@ class MainWindow(QMainWindow):
         self.component_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.component_table.setShowGrid(False)
         self.component_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.component_table.setMinimumHeight(210)
         layout.addWidget(self.component_table, 1)
         layout.addWidget(label("安装包已包含全部下载组件。更新应用时完整安装新版即可，下载文件和历史会保留。", "Muted", True))
 
@@ -418,13 +441,12 @@ class MainWindow(QMainWindow):
                     font = QFont("Bahnschrift", 12)
                     font.setBold(True)
                     item.setFont(font)
-                conversion = "\n高清 MP4 将转换为兼容 H.264；音频无损复制" if option.container == "mp4" and not option.video_codec.lower().startswith(("avc", "h264")) else "\n无损合并，不重新编码"
-                item.setToolTip(f"{option.width} × {option.height}\n视频：{option.video_codec}\n音频：{option.audio_codec}{conversion}")
+                item.setToolTip(f"{option.width} × {option.height}\n视频：{option.video_codec}\n音频：{option.audio_codec}\n无损合并，不重新编码")
                 self.formats.setItem(row, column, item)
         if self.visible_options:
             target = next((index for index, item in enumerate(self.visible_options) if item.resolution == (720 if self.quick else 1080) and item.container == "mp4"), 0)
             self.formats.selectRow(target)
-        self.format_hint.setText("大小为估计值，实际下载后可能不同。高清 MP4 若源编码为 AV1 / VP9，会自动转换为兼容 H.264。" if options
+        self.format_hint.setText("大小为估计值，实际下载后可能不同。高分辨率 AV1 / VP9 文件需要播放器支持相应编码。" if options
                                  else "解析后显示源视频实际提供的清晰度。")
         if options and not self.visible_options:
             self.format_hint.setText("源视频未提供此档位，请切换下载方式。")
@@ -499,7 +521,6 @@ class MainWindow(QMainWindow):
             self.progress_meta.setText(details)
         else:
             self.progress_meta.setText({"starting": "正在刷新所选格式和音频", "merging": "正在无损合并画面与声音",
-                                        "converting": "正在转换为兼容 H.264 MP4（音频无损复制）",
                                         "verifying": "正在检查视频轨、音频轨和时长"}.get(state, ""))
 
     def receipt(self, job):
@@ -629,8 +650,10 @@ class MainWindow(QMainWindow):
             directory.mkdir(parents=True, exist_ok=True)
             self.store.set_setting("directory", str(directory.resolve()))
             self.store.set_setting("proxy", proxy)
+            self.store.set_setting("close_action", self.close_action_input.currentData())
+            self.store.set_setting("confirm_close", self.close_prompt_input.isChecked())
             self.update_folder_label()
-            self.settings_notice.setText("已保存，下次下载使用新设置。")
+            self.settings_notice.setText("已保存。关闭方式立即生效，下载设置用于下次下载。")
         except (UserError, OSError) as error:
             self.settings_notice.setText(str(error))
 
@@ -695,7 +718,52 @@ class MainWindow(QMainWindow):
         self.show_notice(message)
         self.update_actions()
 
+    def request_exit(self):
+        """显式退出不受窗口关闭偏好影响，仍确认正在运行的下载。"""
+        self._exit_requested = True
+        try:
+            return self.close()
+        finally:
+            self._exit_requested = False
+
+    def ask_close_action(self, action):
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("关闭窗口")
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setText("关闭窗口后将最小化到任务栏，下载会继续。" if action == "minimize"
+                       else "关闭窗口后将退出 VidVeya。")
+        dialog.setInformativeText("可选择本次操作，或在“设置 → 关闭窗口时”修改默认行为。")
+        minimize = dialog.addButton("最小化", QMessageBox.ButtonRole.AcceptRole)
+        quit_button = dialog.addButton("退出软件", QMessageBox.ButtonRole.DestructiveRole)
+        cancel = dialog.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        dialog.setDefaultButton(quit_button if action == "exit" else minimize)
+        dialog.setEscapeButton(cancel)
+        remember = QCheckBox("记住我的选择，不再提示", dialog)
+        dialog.setCheckBox(remember)
+        dialog.exec()
+        chosen = dialog.clickedButton()
+        selected = "minimize" if chosen is minimize else "exit" if chosen is quit_button else None
+        result = selected, remember.isChecked()
+        dialog.deleteLater()
+        return result
+
     def closeEvent(self, event):
+        if self.closing:
+            event.accept()
+            return
+        action = "exit" if self._exit_requested else self.store.get_setting("close_action", "minimize")
+        remember = False
+        if not self._exit_requested and self.store.get_setting("confirm_close", True):
+            action, remember = self.ask_close_action(action)
+            if action is None:
+                event.ignore()
+                return
+        if action != "exit":
+            if remember:
+                self.remember_close_action("minimize")
+            event.ignore()
+            self.showMinimized()
+            return
         if self.downloader and self.downloader.isRunning():
             answer = QMessageBox.question(self, "正在下载", "退出会中断当前下载。可最小化窗口继续下载。\n\n确定退出？",
                                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -703,6 +771,8 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+        if remember:
+            self.remember_close_action("exit")
         self.closing = True
         for worker in list(self.workers):
             worker.cancel()
@@ -713,3 +783,9 @@ class MainWindow(QMainWindow):
         if self.thumbnail_reply:
             self.thumbnail_reply.abort()
         event.accept()
+
+    def remember_close_action(self, action):
+        self.store.set_setting("close_action", action)
+        self.store.set_setting("confirm_close", False)
+        self.close_action_input.setCurrentIndex(self.close_action_input.findData(action))
+        self.close_prompt_input.setChecked(False)

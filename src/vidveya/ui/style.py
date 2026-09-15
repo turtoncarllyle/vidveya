@@ -26,6 +26,8 @@ QPushButton#Mode { padding: 8px 20px; }
 QPushButton#Mode:checked { color: #CE2E37; background: #FFF0F1; border-color: #F1ADB2; }
 QLineEdit { background: #FFFFFF; border: 1px solid #DCE0E7; border-radius: 7px; padding: 10px 12px; selection-background-color: #E33D45; }
 QLineEdit:focus { border: 2px solid #E33D45; padding: 9px 11px; }
+QComboBox { background: #FFFFFF; border: 1px solid #DCE0E7; border-radius: 7px; padding: 10px 12px; }
+QComboBox:focus { border: 2px solid #E33D45; padding: 9px 11px; }
 QTableWidget { background: #FFFFFF; border: 1px solid #E5E7EC; border-radius: 8px; gridline-color: #EEF0F3; selection-background-color: #FFF0F1; selection-color: #20242C; }
 QTableWidget::item { padding: 8px; border: 0; }
 QHeaderView::section { background: #F7F8FA; color: #69717E; padding: 10px 8px; border: 0; border-bottom: 1px solid #E5E7EC; font-weight: 400; }

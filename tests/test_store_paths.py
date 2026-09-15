@@ -14,7 +14,7 @@ def test_persistence_and_recovery(tmp_path):
     db = tmp_path / "state.db"
     store = Store(db)
     store.set_setting("directory", "E:\\我的视频")
-    for state in ("downloading", "completed"):
+    for state in ("downloading", "converting", "completed"):
         store.save_job({"id": state, "state": state, "created": timestamp()})
     store.close()
     store = Store(db)
@@ -22,6 +22,7 @@ def test_persistence_and_recovery(tmp_path):
     assert store.get_setting("directory") == "E:\\我的视频"
     jobs = {job["id"]: job for job in store.jobs()}
     assert jobs["downloading"]["state"] == "interrupted"
+    assert jobs["converting"]["state"] == "interrupted"
     assert jobs["completed"]["state"] == "completed"
     store.close()
 

@@ -2,11 +2,23 @@
 
 ## 中文
 
-修复高清 MP4 在部分 Windows 播放器中只有声音没有画面的兼容性问题。源视频为 AV1/VP9 时，VidVeya 使用内置 FFmpeg 转换为 H.264，并无损复制音频；H.264 源仍采用无损合并。
+- 高清下载恢复 `0.1.2` 的逻辑，保留源编码并无损合并音视频，取消耗时的自动 H.264 转码。
+- 设置中可选择关闭窗口时“最小化到任务栏（继续下载）”或“退出软件”，支持操作提示和记住选择。
+- 左侧新增“退出软件”。最小化保持下载运行；退出时确认并保存中断任务，便于重试。
+- 仍在通过 ffprobe 校验视频轨、音频轨、清晰度和时长后才显示成功，保留 Qt 启动和安装升级修复。
+- 版本保持 `0.1.3`，安装版和便携版同步更新。设置、历史和下载文件会保留。
+
+AV1/VP9 文件需要支持相应编码的播放器，例如 VLC 或 mpv；本版不通过转码改变源编码。
 
 ## English
 
-Fixes high-definition MP4 files that played audio without video in Windows players lacking AV1/VP9 decoding. When the source uses AV1 or VP9, VidVeya uses the bundled FFmpeg to convert video to H.264 while copying audio without re-encoding; H.264 sources still use lossless remuxing.
+- Restore the `0.1.2` HD download behavior: preserve source codecs and merge video and audio without automatic H.264 transcoding.
+- Add Settings options to minimize to the taskbar or exit when closing, with an optional prompt that can remember the choice.
+- Add an explicit Exit action in the sidebar. Minimizing keeps downloads running; exiting confirms and saves interrupted jobs for retry.
+- Continue requiring ffprobe checks for video, audio, resolution, and duration before reporting success. Retain the Qt startup and installer upgrade fixes.
+- Keep version `0.1.3` for both updated packages, preserving settings, history, and downloaded files.
+
+AV1/VP9 files require a player with the matching decoder, such as VLC or mpv. This build preserves the source codecs.
 
 # v0.1.2
 
@@ -66,14 +78,3 @@ Live recording, playlist batching, DRM bypass, region bypass, and unauthorized a
 
 - Unit and integration tests cover URL validation, format pairing, audio-track requirements, auth storage, media verification, cancellation state, Unicode paths, and 4+ GB file handling.
 - A real public YouTube sample was downloaded and verified as H.264 video with AAC stereo audio.
-# v0.1.1
-
-## 中文
-
-修复 Windows 安装版和便携版启动时 `PySide6.QtCore` 因构建环境 ICU DLL 冲突而无法加载的问题。该版本重新打包 Qt 运行库，并在发布前验证了便携版启动、组件诊断和真实公开视频下载。
-
-## English
-
-Fixes a startup failure in the Windows installer and portable package where `PySide6.QtCore` could not load because an unrelated ICU DLL from the build environment shadowed the Windows Qt runtime. The Qt runtime was repackaged and the portable build was verified with startup, component diagnostics, and a real public video download.
-
-# v0.1.0
