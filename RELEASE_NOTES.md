@@ -1,3 +1,13 @@
+# v0.1.1
+
+## 中文
+
+修复 Windows 安装版和便携版启动时 PySide6.QtCore 因构建环境 ICU DLL 冲突而无法加载的问题。该版本重新打包 Qt 运行库，并在发布前验证了便携版启动、组件诊断和真实公开视频下载。
+
+## English
+
+Fixes a startup failure in the Windows installer and portable package where PySide6.QtCore could not load because an unrelated ICU DLL from the build environment shadowed the Windows Qt runtime. The Qt runtime was repackaged and the portable build was verified with startup, component diagnostics, and a real public video download.
+
 # v0.1.0
 
 ## 中文
@@ -36,3 +46,14 @@ Live recording, playlist batching, DRM bypass, region bypass, and unauthorized a
 
 - Unit and integration tests cover URL validation, format pairing, audio-track requirements, auth storage, media verification, cancellation state, Unicode paths, and 4+ GB file handling.
 - A real public YouTube sample was downloaded and verified as H.264 video with AAC stereo audio.
+# v0.1.1
+
+## 中文
+
+修复 Windows 安装版和便携版启动时 `PySide6.QtCore` 因构建环境 ICU DLL 冲突而无法加载的问题。该版本重新打包 Qt 运行库，并在发布前验证了便携版启动、组件诊断和真实公开视频下载。
+
+## English
+
+Fixes a startup failure in the Windows installer and portable package where `PySide6.QtCore` could not load because an unrelated ICU DLL from the build environment shadowed the Windows Qt runtime. The Qt runtime was repackaged and the portable build was verified with startup, component diagnostics, and a real public video download.
+
+# v0.1.0

@@ -25,7 +25,7 @@ def provision(name, item):
     if not archive.exists() or digest(archive) != item["sha256"]:
         print(f"Downloading {name} {item['version']}...", flush=True)
         partial = archive.with_suffix(archive.suffix + ".part")
-        request = urllib.request.Request(item["url"], headers={"User-Agent": "VidVeya-build/0.1.0"})
+        request = urllib.request.Request(item["url"], headers={"User-Agent": "VidVeya-build/0.1.1"})
         with urllib.request.urlopen(request, timeout=120) as response, partial.open("wb") as target:
             shutil.copyfileobj(response, target, 1024 * 1024)
         if digest(partial) != item["sha256"]:

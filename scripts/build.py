@@ -9,7 +9,7 @@ import sys
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 
 def run(*command):
@@ -30,6 +30,11 @@ def main():
         if not args.skip_provision:
             run(sys.executable, "scripts/provision.py")
         run(sys.executable, "scripts/prepare_assets.py")
+        # Remove stale one-folder files before COLLECT so a previous build
+        # cannot leave conflicting native DLLs in the portable package.
+        stale_dist = ROOT / "dist" / "VidVeya"
+        if stale_dist.exists():
+            shutil.rmtree(stale_dist)
         run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--workpath", ".build/pyinstaller", "packaging/vidveya.spec")
     destination = ROOT / "dist" / "VidVeya"
     for filename in ("README.md", "README.en.md", "THIRD_PARTY_NOTICES.md", "RELEASE_NOTES.md"):

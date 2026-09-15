@@ -18,12 +18,25 @@ common_data += [
     (str(root / 'assets'), 'assets'),
 ]
 
+# PyInstaller can discover ICU DLLs from the build machine's Poppler runtime.
+# PySide6's Windows Qt build expects the Windows ICU ABI; bundling Poppler's
+# ICU 78 files beside Qt6Core causes QtCore.pyd to fail with WinError 127 on
+# machines whose system ICU is selected first. Keep those unrelated DLLs out
+# of both GUI and worker collections.
+def without_conflicting_icu(entries):
+    blocked = {'icuuc.dll', 'icudt78.dll', 'icuin.dll'}
+    return [entry for entry in entries if Path(str(entry[0])).name.lower() not in blocked]
+
+common_binaries = without_conflicting_icu(common_binaries)
+
 gui = Analysis([str(root / 'launcher.py')], pathex=[str(root / 'src')],
                binaries=common_binaries, datas=common_data, hiddenimports=hidden,
                excludes=['tkinter', 'PySide6.QtQml', 'PySide6.QtQuick', 'PySide6.QtTest'], noarchive=False)
 worker = Analysis([str(root / 'worker_entry.py')], pathex=[str(root / 'src')],
                   binaries=common_binaries, datas=common_data, hiddenimports=hidden,
                   excludes=['PySide6', 'tkinter'], noarchive=False)
+gui.binaries = without_conflicting_icu(gui.binaries)
+worker.binaries = without_conflicting_icu(worker.binaries)
 gui_exe = EXE(PYZ(gui.pure), gui.scripts, [], exclude_binaries=True, name='VidVeya',
               console=False, icon=str(root / 'assets' / 'vidveya.ico'),
               version=str(root / 'packaging' / 'version_info.txt'), upx=False)
