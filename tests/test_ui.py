@@ -206,3 +206,50 @@ def test_progress_only_reaches_100_after_verified_result(make_window, tmp_path):
     assert window.progress_value.text() == "100%"
     assert window.progress_bar.value() == 100
     assert window.store.jobs()[0]["state"] == "completed"
+
+
+def test_theme_toggle_and_persistence(make_window):
+    window = make_window()
+    initial_theme = window.current_theme_setting
+    assert initial_theme in {"system", "light", "dark"}
+    window.toggle_theme_quick()
+    assert window.store.get_setting("theme") in {"light", "dark"}
+    window.apply_theme("dark")
+    assert window.current_theme_setting == "dark"
+    window.apply_theme("light")
+    assert window.current_theme_setting == "light"
+
+
+def test_language_switch_and_i18n():
+    from vidveya.i18n import get_current_language, set_language, t
+    assert set_language("en") == "en"
+    assert get_current_language() == "en"
+    assert t("dl_btn_download") == "Download Selected"
+    assert set_language("zh") == "zh"
+    assert get_current_language() == "zh"
+    assert t("dl_btn_download") == "下载所选视频"
+
+
+def test_sidebar_mini_task_lifecycle(make_window, tmp_path):
+    window = make_window()
+    assert window.sidebar_mini_task.isHidden()
+    start_fake_download(window, tmp_path)
+    window.show_progress({"state": "downloading", "percent": 50})
+    assert not window.sidebar_mini_task.isHidden()
+    assert window.mini_status.text() == "50%"
+    window.download_done({"path": str(tmp_path / "有声视频.mp4"), "verification": {"bytes": 1024}})
+    assert window.sidebar_mini_task.isHidden()
+
+
+def test_cookie_help_dialog(make_window, monkeypatch):
+    window = make_window()
+    dialog_opened = []
+
+    def fake_exec(self):
+        dialog_opened.append(self.windowTitle())
+        return QMessageBox.StandardButton.Ok
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    window.show_cookie_help()
+    assert len(dialog_opened) == 1
+    assert "Cookie" in dialog_opened[0]

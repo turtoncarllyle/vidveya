@@ -1,3 +1,31 @@
+# v0.1.4
+
+## 中文
+
+- 更新下载、记录和设置页面的卡片布局，新增浅色、深色及跟随系统的主题设置，侧栏可快速切换主题。
+- 增加简体中文、English 和跟随系统的界面语言选项，重新启动后应用；部分下载状态、诊断和对话框仍为中文。
+- 下载卡片显示准备、下载、合并、校验、完成五个阶段，侧栏显示当前任务进度，切换页面仍可查看。
+- 下载完成后可直接播放视频或打开文件夹，下载记录增加播放入口。
+- 修正卡片内主按钮的背景显示和完成操作栏的间距；下载页在小窗口中可滚动，避免按钮文字被挤压。
+- 纳入当前设置页的 Cookie 操作说明入口，中英文 README 提供完整导入指南；Cookie 导入和鉴权流程保持原有实现。
+- 保留原编码下载、无损音视频合并和 ffprobe 校验，不自动转码；保留关闭窗口最小化/退出设置及 Qt 启动修复。
+- Windows x64 安装包和便携包统一为 `0.1.4`，用户无需单独安装运行环境。
+
+AV1/VP9 输出仍需要播放器支持对应编码。语言选项目前覆盖主要界面，尚未完成全部运行提示的翻译。
+
+## English
+
+- Refresh the download, history, and settings pages with card layouts. Add light, dark, and system theme preferences plus a sidebar theme toggle.
+- Add Simplified Chinese, English, and system language options, applied on restart. Some download status messages, diagnostics, and dialogs remain in Chinese.
+- Show preparation, download, merge, verification, and completion stages, with a sidebar progress indicator visible across pages.
+- Add playback and folder shortcuts after downloads complete, and playback from download history.
+- Fix primary button backgrounds inside cards and completion action spacing. Allow scrolling on the download page so small windows do not compress button text.
+- Include the current settings-page cookie instructions and full import guides in both READMEs. Cookie import and authentication keep their existing implementation.
+- Preserve source codecs, lossless audio/video merging, and ffprobe validation without automatic transcoding. Retain minimize/exit preferences and the Qt startup fixes.
+- Ship version `0.1.4` as Windows x64 installer and portable packages, with all required runtimes included.
+
+AV1/VP9 output requires a compatible decoder. Language selection covers the main interface; translation of all runtime messages is not yet complete.
+
 # v0.1.3
 
 ## 中文

@@ -1,43 +1,365 @@
-# A quiet Windows workspace with one strong identifier: red resolution badges.
-STYLE = """
-QMainWindow, QWidget#Workspace { background: #F7F8FA; }
-QWidget { font-family: 'Microsoft YaHei UI'; font-size: 14px; color: #20242C; }
-QFrame#Sidebar { background: #FFFFFF; border-right: 1px solid #E5E7EC; }
-QLabel#Brand { font-family: 'Bahnschrift', 'Segoe UI'; font-size: 27px; font-weight: 700; }
-QLabel#Eyebrow { color: #69717E; font-size: 12px; }
-QLabel#Heading { font-size: 25px; font-weight: 700; }
-QLabel#Subheading { font-size: 16px; font-weight: 600; }
-QLabel#Muted { color: #69717E; }
-QLabel#Status { color: #69717E; font-size: 12px; }
-QLabel#ProgressValue { color: #CE2E37; font-size: 16px; font-weight: 700; }
-QFrame#Card { background: #FFFFFF; border: 1px solid #E5E7EC; border-radius: 12px; }
-QFrame#Card QLabel, QFrame#Card QWidget { background: transparent; }
-QPushButton { background: #FFFFFF; border: 1px solid #DCE0E7; border-radius: 7px; padding: 9px 16px; font-weight: 600; }
-QPushButton:hover { background: #F4F5F7; border-color: #C4CAD3; }
-QPushButton:pressed { background: #EAECEF; }
-QPushButton:focus { border: 2px solid #E33D45; padding: 8px 15px; }
-QPushButton:disabled { color: #9CA3AF; background: #F1F2F5; border-color: #E8EAF0; }
-QPushButton#Primary { color: #FFFFFF; background: #E33D45; border-color: #E33D45; }
-QPushButton#Primary:hover { background: #CE2E37; }
-QPushButton#Primary:disabled { background: #EEADB1; border-color: #EEADB1; }
-QPushButton#Navigation { text-align: left; border: 0; background: transparent; padding: 12px 16px; font-weight: 400; }
-QPushButton#Navigation:checked { color: #CE2E37; background: #FFF0F1; font-weight: 700; }
-QPushButton#Navigation:hover { background: #F7F8FA; }
-QPushButton#Mode { padding: 8px 20px; }
-QPushButton#Mode:checked { color: #CE2E37; background: #FFF0F1; border-color: #F1ADB2; }
-QLineEdit { background: #FFFFFF; border: 1px solid #DCE0E7; border-radius: 7px; padding: 10px 12px; selection-background-color: #E33D45; }
-QLineEdit:focus { border: 2px solid #E33D45; padding: 9px 11px; }
-QComboBox { background: #FFFFFF; border: 1px solid #DCE0E7; border-radius: 7px; padding: 10px 12px; }
-QComboBox:focus { border: 2px solid #E33D45; padding: 9px 11px; }
-QTableWidget { background: #FFFFFF; border: 1px solid #E5E7EC; border-radius: 8px; gridline-color: #EEF0F3; selection-background-color: #FFF0F1; selection-color: #20242C; }
-QTableWidget::item { padding: 8px; border: 0; }
-QHeaderView::section { background: #F7F8FA; color: #69717E; padding: 10px 8px; border: 0; border-bottom: 1px solid #E5E7EC; font-weight: 400; }
-QProgressBar { border: 0; border-radius: 6px; background: #ECEEF2; text-align: center; }
-QProgressBar::chunk { border-radius: 6px; background: #E33D45; }
-QLabel#Notice { padding: 10px 12px; border-radius: 6px; background: #FFF0F1; color: #AC2630; }
-QScrollArea { border: 0; background: transparent; }
-QScrollBar:vertical { width: 9px; background: transparent; }
-QScrollBar::handle:vertical { background: #D1D6DF; border-radius: 4px; min-height: 24px; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QToolTip { background: #20242C; color: #FFFFFF; padding: 6px; border: 0; }
+"""Modern Windows 11 Fluent theme stylesheets for VidVeya."""
+import sys
+
+if sys.platform == "win32":
+    import winreg
+else:
+    winreg = None
+
+
+LIGHT_THEME = {
+    "bg_app": "#F8FAFC",
+    "bg_surface": "#FFFFFF",
+    "bg_subtle": "#F1F5F9",
+    "bg_hover": "#F1F5F9",
+    "border": "#E2E8F0",
+    "border_strong": "#CBD5E1",
+    "border_light": "#EDF2F7",
+    "border_focus": "#E53935",
+    "text_main": "#0F172A",
+    "text_muted": "#64748B",
+    "text_faint": "#94A3B8",
+    "accent": "#E53935",
+    "accent_hover": "#D32F2F",
+    "accent_pressed": "#B71C1C",
+    "accent_tint": "#FEECEE",
+    "accent_tint_border": "#FCA5A5",
+    "accent_disabled": "#FCA5A5",
+    "sidebar_bg": "#FFFFFF",
+    "sidebar_border": "#E2E8F0",
+    "table_header_bg": "#F8FAFC",
+    "progress_bg": "#E2E8F0",
+    "progress_chunk": "#E53935",
+    "notice_bg": "#FEECEE",
+    "notice_text": "#B71C1C",
+    "badge_bg": "#F1F5F9",
+    "badge_text": "#334155",
+    "badge_green_bg": "#ECFDF5",
+    "badge_green_text": "#059669",
+}
+
+DARK_THEME = {
+    "bg_app": "#0F1117",
+    "bg_surface": "#181B22",
+    "bg_subtle": "#212631",
+    "bg_hover": "#262C38",
+    "border": "#2D3340",
+    "border_strong": "#3D4453",
+    "border_light": "#222731",
+    "border_focus": "#EF4444",
+    "text_main": "#F8FAFC",
+    "text_muted": "#94A3B8",
+    "text_faint": "#64748B",
+    "accent": "#E53935",
+    "accent_hover": "#EF4444",
+    "accent_pressed": "#DC2626",
+    "accent_tint": "#381A1C",
+    "accent_tint_border": "#7F1D1D",
+    "accent_disabled": "#7F1D1D",
+    "sidebar_bg": "#13161C",
+    "sidebar_border": "#222732",
+    "table_header_bg": "#181B22",
+    "progress_bg": "#2A303C",
+    "progress_chunk": "#EF4444",
+    "notice_bg": "#381A1C",
+    "notice_text": "#FCA5A5",
+    "badge_bg": "#262C38",
+    "badge_text": "#CBD5E1",
+    "badge_green_bg": "#064E3B",
+    "badge_green_text": "#34D399",
+}
+
+def detect_system_theme() -> str:
+    """检测 Windows 系统主题，返回 'dark' 或 'light'。"""
+    if winreg is not None:
+        try:
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            )
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            winreg.CloseKey(key)
+            return "light" if value != 0 else "dark"
+        except Exception:
+            pass
+    return "light"
+
+
+def resolve_theme(theme: str = "system") -> str:
+    """解析实际主题模式（'light' 或 'dark'）。"""
+    if theme == "system" or not theme:
+        return detect_system_theme()
+    return "dark" if theme == "dark" else "light"
+
+
+def get_theme_stylesheet(theme: str = "system") -> str:
+    actual_theme = resolve_theme(theme)
+    tokens = DARK_THEME if actual_theme == "dark" else LIGHT_THEME
+    return f"""
+QMainWindow, QWidget#Workspace, QWidget#Page {{
+    background: {tokens['bg_app']};
+}}
+QWidget {{
+    font-family: 'Segoe UI', 'Microsoft YaHei UI', -apple-system, sans-serif;
+    font-size: 14px;
+    color: {tokens['text_main']};
+}}
+QFrame#Sidebar {{
+    background: {tokens['sidebar_bg']};
+    border-right: 1px solid {tokens['sidebar_border']};
+}}
+QLabel#Brand {{
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+    font-size: 26px;
+    font-weight: 700;
+    color: {tokens['text_main']};
+}}
+QLabel#Eyebrow {{
+    color: {tokens['text_muted']};
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+}}
+QLabel#Heading {{
+    font-size: 24px;
+    font-weight: 700;
+    color: {tokens['text_main']};
+}}
+QLabel#Subheading {{
+    font-size: 16px;
+    font-weight: 600;
+    color: {tokens['text_main']};
+}}
+QLabel#Muted {{
+    color: {tokens['text_muted']};
+    font-size: 13px;
+}}
+QLabel#Status {{
+    color: {tokens['text_muted']};
+    font-size: 12px;
+}}
+QLabel#ProgressValue {{
+    color: {tokens['accent']};
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+    font-size: 17px;
+    font-weight: 700;
+}}
+QFrame#Card {{
+    background: {tokens['bg_surface']};
+    border: 1px solid {tokens['border']};
+    border-radius: 12px;
+}}
+QFrame#Card QLabel {{
+    background: transparent;
+}}
+QFrame#SubCard {{
+    background: {tokens['bg_subtle']};
+    border: 1px solid {tokens['border_light']};
+    border-radius: 8px;
+}}
+QFrame#SubCard QLabel {{
+    background: transparent;
+}}
+QPushButton {{
+    background: {tokens['bg_surface']};
+    color: {tokens['text_main']};
+    border: 1px solid {tokens['border']};
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-weight: 600;
+}}
+QPushButton:hover {{
+    background: {tokens['bg_hover']};
+    border-color: {tokens['border_strong']};
+}}
+QPushButton:pressed {{
+    background: {tokens['border']};
+}}
+QPushButton:focus {{
+    border: 2px solid {tokens['border_focus']};
+    padding: 7px 15px;
+}}
+QPushButton:disabled {{
+    color: {tokens['text_faint']};
+    background: {tokens['bg_subtle']};
+    border-color: {tokens['border']};
+}}
+QPushButton#Primary {{
+    color: #FFFFFF;
+    background: {tokens['accent']};
+    border-color: {tokens['accent']};
+}}
+QPushButton#Primary:hover {{
+    background: {tokens['accent_hover']};
+    border-color: {tokens['accent_hover']};
+}}
+QPushButton#Primary:pressed {{
+    background: {tokens['accent_pressed']};
+    border-color: {tokens['accent_pressed']};
+}}
+QPushButton#Primary:disabled {{
+    background: {tokens['accent_disabled']};
+    border-color: {tokens['accent_disabled']};
+    color: #FFFFFF;
+}}
+QPushButton#Navigation {{
+    text-align: left;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: {tokens['text_muted']};
+    padding: 10px 14px;
+    font-weight: 500;
+}}
+QPushButton#Navigation:hover {{
+    background: {tokens['bg_hover']};
+    color: {tokens['text_main']};
+}}
+QPushButton#Navigation:checked {{
+    color: {tokens['accent']};
+    background: {tokens['accent_tint']};
+    font-weight: 700;
+    border-color: {tokens['accent_tint_border']};
+}}
+QPushButton#Mode {{
+    padding: 7px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+}}
+QPushButton#Mode:checked {{
+    color: {tokens['accent']};
+    background: {tokens['accent_tint']};
+    border-color: {tokens['accent_tint_border']};
+    font-weight: 700;
+}}
+QLineEdit {{
+    background: {tokens['bg_surface']};
+    color: {tokens['text_main']};
+    border: 1px solid {tokens['border']};
+    border-radius: 8px;
+    padding: 9px 12px;
+    selection-background-color: {tokens['accent']};
+}}
+QLineEdit:focus {{
+    border: 2px solid {tokens['border_focus']};
+    padding: 8px 11px;
+}}
+QLineEdit:disabled {{
+    background: {tokens['bg_subtle']};
+    color: {tokens['text_faint']};
+}}
+QComboBox {{
+    background: {tokens['bg_surface']};
+    color: {tokens['text_main']};
+    border: 1px solid {tokens['border']};
+    border-radius: 8px;
+    padding: 9px 12px;
+}}
+QComboBox:focus {{
+    border: 2px solid {tokens['border_focus']};
+    padding: 8px 11px;
+}}
+QComboBox::drop-down {{
+    border: 0;
+    width: 24px;
+}}
+QComboBox QAbstractItemView {{
+    background: {tokens['bg_surface']};
+    color: {tokens['text_main']};
+    border: 1px solid {tokens['border']};
+    selection-background-color: {tokens['accent_tint']};
+    selection-color: {tokens['accent']};
+}}
+QTableWidget {{
+    background: {tokens['bg_surface']};
+    color: {tokens['text_main']};
+    border: 1px solid {tokens['border']};
+    border-radius: 10px;
+    gridline-color: {tokens['border_light']};
+    selection-background-color: {tokens['accent_tint']};
+    selection-color: {tokens['text_main']};
+}}
+QTableWidget::item {{
+    padding: 8px;
+    border: 0;
+}}
+QTableWidget::item:selected {{
+    background: {tokens['accent_tint']};
+    color: {tokens['text_main']};
+}}
+QHeaderView::section {{
+    background: {tokens['table_header_bg']};
+    color: {tokens['text_muted']};
+    padding: 10px 8px;
+    border: 0;
+    border-bottom: 1px solid {tokens['border']};
+    font-weight: 600;
+    font-size: 13px;
+}}
+QProgressBar {{
+    border: 0;
+    border-radius: 6px;
+    background: {tokens['progress_bg']};
+    text-align: center;
+}}
+QProgressBar::chunk {{
+    border-radius: 6px;
+    background: {tokens['progress_chunk']};
+}}
+QLabel#Notice {{
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: {tokens['notice_bg']};
+    color: {tokens['notice_text']};
+    font-size: 13px;
+    border: 1px solid {tokens['accent_tint_border']};
+}}
+QScrollArea {{
+    border: 0;
+    background: transparent;
+}}
+QScrollBar:vertical {{
+    width: 8px;
+    background: transparent;
+    margin: 2px 0 2px 0;
+}}
+QScrollBar::handle:vertical {{
+    background: {tokens['border_strong']};
+    border-radius: 4px;
+    min-height: 24px;
+}}
+QScrollBar::handle:vertical:hover {{
+    background: {tokens['text_muted']};
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    height: 0;
+}}
+QToolTip {{
+    background: {tokens['text_main']};
+    color: {tokens['bg_surface']};
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 0;
+    font-size: 12px;
+}}
+QCheckBox {{
+    spacing: 8px;
+    color: {tokens['text_main']};
+}}
+QCheckBox::indicator {{
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1px solid {tokens['border_strong']};
+    background: {tokens['bg_surface']};
+}}
+QCheckBox::indicator:hover {{
+    border-color: {tokens['accent']};
+}}
+QCheckBox::indicator:checked {{
+    background: {tokens['accent']};
+    border-color: {tokens['accent']};
+}}
 """
+
+STYLE = get_theme_stylesheet("light")

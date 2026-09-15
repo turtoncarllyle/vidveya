@@ -28,11 +28,19 @@ Every option must have audio. Separate streams are merged automatically, then th
 
 ### Closing the window
 
-In **Settings → When closing the window**, choose **Minimize to taskbar (keep downloading)** or **Exit application**, then save. By default, closing shows a prompt with minimize selected. Check **Remember my choice, do not ask again** in that prompt, or disable prompts in Settings. Minimizing keeps downloads running; use the taskbar to restore the window. The sidebar **Exit application** action always allows you to quit. Exiting during a download requires confirmation and saves the interrupted job in history for retry. The application UI is in Simplified Chinese.
+In **Settings → When closing the window**, choose **Minimize** or **Exit**, then save. By default, closing shows a prompt with minimize selected. Check **Remember my choice, do not ask again** in that prompt, or disable prompts in Settings. Minimizing keeps downloads running; use the taskbar to restore the window. The sidebar **Exit** action always allows you to quit. Exiting during a download requires confirmation and saves the interrupted job in history for retry.
+
+### Appearance, language, and shortcuts (0.1.4)
+
+Choose light, dark, or system theme in **Settings → Appearance & Language**, or use the sidebar theme toggle. Select Simplified Chinese, English, or system language and restart the app to apply it. Some download status messages, diagnostics, and dialogs remain in Chinese.
+
+The sidebar shows the current download's progress even when viewing history or settings. Completed downloads have **Play Video** and **Open Folder** shortcuts; history also provides playback.
 
 ## YouTube cookie import guide
 
 The current workflow is **export a Cookie TXT from your browser → import it into VidVeya → analyze the video again**. Public videos usually do not require cookies. Members-only, private, and other restricted videos require an account that already has permission to watch them.
+
+Version `0.1.4` also includes brief instructions under **Settings → YouTube Session → How to import Cookie?** (设置 → YouTube 登录态 → 如何导入 Cookie？).
 
 ### Step 1: Sign in using your browser
 

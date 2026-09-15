@@ -16,11 +16,13 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..auth import clear_cookies, import_cookies, vault_path
 from ..engine import cleanup_staging
+from ..i18n import set_language, t
 from ..models import FormatOption, STATE_LABELS, UserError
 from ..paths import downloads_dir
 from ..processes import WorkerThread
 from ..store import Store, timestamp
 from ..urls import normalize_url, validate_proxy
+from .style import get_theme_stylesheet, resolve_theme
 
 
 def label(text="", role="", wrap=False):
@@ -79,15 +81,47 @@ class MainWindow(QMainWindow):
         self.network = QNetworkAccessManager(self)
         self.thumbnail_reply = None
         self.ready = False
-        self.setWindowTitle(f"VidVeya · YouTube 视频下载助手 {__version__}")
-        self.resize(1080, 790)
-        self.setMinimumSize(900, 690)
+        self.last_downloaded_path = None
+
+        # 初始化主题与语言（默认跟随系统）
+        self.current_theme_setting = self.store.get_setting("theme", "system")
+        self.current_lang_setting = self.store.get_setting("language", "system")
+        set_language(self.current_lang_setting)
+
+        self.setWindowTitle(f"{t('app_title', 'VidVeya · YouTube 视频下载助手')} {__version__}")
+        self.resize(1120, 820)
+        self.setMinimumSize(940, 720)
         self._build()
+        self.apply_theme(self.current_theme_setting)
         self._restore_receipts()
         self.store.recover()
         self.refresh_history()
         if start_diagnostics:
             self.check_components()
+
+    def apply_theme(self, theme="system"):
+        self.current_theme_setting = theme
+        from PySide6.QtWidgets import QApplication
+        sheet = get_theme_stylesheet(theme)
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(sheet)
+        else:
+            self.setStyleSheet(sheet)
+        if hasattr(self, "theme_toggle_btn"):
+            actual = resolve_theme(theme)
+            self.theme_toggle_btn.setText("☀️" if actual == "dark" else "🌙")
+            self.theme_toggle_btn.setToolTip("切换为浅色模式" if actual == "dark" else "切换为深色模式")
+
+    def toggle_theme_quick(self):
+        actual = resolve_theme(self.current_theme_setting)
+        next_theme = "light" if actual == "dark" else "dark"
+        self.store.set_setting("theme", next_theme)
+        self.apply_theme(next_theme)
+        if hasattr(self, "theme_input"):
+            idx = self.theme_input.findData(next_theme)
+            if idx >= 0:
+                self.theme_input.setCurrentIndex(idx)
 
     def _build(self):
         root = QWidget()
@@ -95,29 +129,70 @@ class MainWindow(QMainWindow):
         horizontal = QHBoxLayout(root)
         horizontal.setContentsMargins(0, 0, 0, 0)
         horizontal.setSpacing(0)
+
         side = QFrame()
         side.setObjectName("Sidebar")
-        side.setFixedWidth(184)
+        side.setFixedWidth(208)
         side_layout = QVBoxLayout(side)
-        side_layout.setContentsMargins(20, 30, 16, 22)
+        side_layout.setContentsMargins(18, 24, 16, 20)
         side_layout.setSpacing(10)
-        side_layout.addWidget(label("VidVeya", "Brand"))
-        side_layout.addWidget(label("VIDEO SAVER", "Eyebrow"))
-        side_layout.addSpacing(32)
+
+        brand_row = QHBoxLayout()
+        brand_col = QVBoxLayout()
+        brand_col.setSpacing(2)
+        brand_col.addWidget(label("VidVeya", "Brand"))
+        brand_col.addWidget(label("VIDEO SAVER", "Eyebrow"))
+        brand_row.addLayout(brand_col, 1)
+
+        self.theme_toggle_btn = button("🌙", self.toggle_theme_quick)
+        self.theme_toggle_btn.setFixedSize(36, 36)
+        self.theme_toggle_btn.setToolTip("切换界面主题")
+        self.theme_toggle_btn.setStyleSheet("border-radius: 18px; padding: 0; font-size: 16px;")
+        brand_row.addWidget(self.theme_toggle_btn)
+        side_layout.addLayout(brand_row)
+
+        side_layout.addSpacing(24)
+
         self.navigation = QButtonGroup(self)
         self.pages = QStackedWidget()
-        for index, text in enumerate(("↓   新建下载", "▤   下载记录", "⚙   设置")):
+        nav_items = (
+            t("nav_new", "↓   新建下载"),
+            t("nav_history", "▤   下载记录"),
+            t("nav_settings", "⚙   设置"),
+        )
+        for index, text in enumerate(nav_items):
             nav = button(text, role="Navigation")
             nav.setCheckable(True)
             self.navigation.addButton(nav, index)
             side_layout.addWidget(nav)
         self.navigation.idClicked.connect(self.pages.setCurrentIndex)
         self.navigation.button(0).setChecked(True)
+
         side_layout.addStretch()
-        side_layout.addWidget(button("退出软件", self.request_exit, "Navigation"))
-        self.health_label = label("正在检查组件…", "Status", True)
+
+        # 侧边栏常驻微型下载指示卡
+        self.sidebar_mini_task = QFrame()
+        self.sidebar_mini_task.setObjectName("SubCard")
+        mini_layout = QVBoxLayout(self.sidebar_mini_task)
+        mini_layout.setContentsMargins(12, 10, 12, 10)
+        mini_layout.setSpacing(6)
+        self.mini_title = label("正在下载…", "Status", True)
+        self.mini_title.setStyleSheet("font-size: 11px; font-weight: 600;")
+        self.mini_progress = QProgressBar()
+        self.mini_progress.setFixedHeight(6)
+        self.mini_progress.setTextVisible(False)
+        self.mini_status = label("", "Eyebrow")
+        mini_layout.addWidget(self.mini_title)
+        mini_layout.addWidget(self.mini_progress)
+        mini_layout.addWidget(self.mini_status)
+        self.sidebar_mini_task.hide()
+        side_layout.addWidget(self.sidebar_mini_task)
+
+        side_layout.addWidget(button(t("nav_exit", "退出软件"), self.request_exit, "Navigation"))
+        self.health_label = label(t("nav_checking", "正在检查组件…"), "Status", True)
         side_layout.addWidget(self.health_label)
         side_layout.addWidget(label(f"v{__version__}  ·  Windows", "Eyebrow"))
+
         horizontal.addWidget(side)
         horizontal.addWidget(self.pages, 1)
         self._build_download_page()
@@ -127,8 +202,9 @@ class MainWindow(QMainWindow):
 
     def page(self, heading, subtitle, scroll=False):
         page = QWidget()
+        page.setObjectName("Page")
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(30, 28, 30, 24)
+        layout.setContentsMargins(32, 28, 32, 26)
         layout.setSpacing(16)
         layout.addWidget(label(heading, "Heading"))
         layout.addWidget(label(subtitle, "Muted", True))
@@ -143,43 +219,58 @@ class MainWindow(QMainWindow):
         return layout
 
     def _build_download_page(self):
-        layout = self.page("把喜欢的视频，留在本地。", "粘贴 YouTube 或 Shorts 链接，选择清晰度，保留画面与声音。")
-        link_row = QHBoxLayout()
+        layout = self.page(t("dl_heading", "把喜欢的视频，留在本地。"),
+                           t("dl_subtitle", "粘贴 YouTube 或 Shorts 链接，选择清晰度，保留画面与声音。"), scroll=True)
+
+        # 集成式链接输入卡片
+        input_card = QFrame()
+        input_card.setObjectName("Card")
+        input_layout = QHBoxLayout(input_card)
+        input_layout.setContentsMargins(14, 12, 14, 12)
+        input_layout.setSpacing(10)
+
         self.url_input = QLineEdit()
         self.url_input.setAccessibleName("YouTube 视频链接")
-        self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=…")
+        self.url_input.setPlaceholderText(t("dl_url_placeholder", "https://www.youtube.com/watch?v=…"))
         self.url_input.returnPressed.connect(self.analyze)
         self.url_input.textEdited.connect(self.invalidate_video)
-        link_row.addWidget(self.url_input, 1)
-        link_row.addWidget(button("粘贴", self.paste))
-        self.parse_button = button("解析视频", self.analyze, "Primary")
-        link_row.addWidget(self.parse_button)
-        layout.addLayout(link_row)
+        input_layout.addWidget(self.url_input, 1)
+
+        input_layout.addWidget(button(t("dl_paste", "粘贴"), self.paste))
+        self.parse_button = button(t("dl_analyze", "解析视频"), self.analyze, "Primary")
+        input_layout.addWidget(self.parse_button)
+        layout.addWidget(input_card)
+
         self.notice = label("", "Notice", True)
         self.notice.hide()
         layout.addWidget(self.notice)
 
+        # 视频详情卡片
         card = QFrame()
         card.setObjectName("Card")
         card_layout = QHBoxLayout(card)
-        card_layout.setContentsMargins(16, 16, 16, 16)
-        card_layout.setSpacing(18)
+        card_layout.setContentsMargins(18, 16, 18, 16)
+        card_layout.setSpacing(20)
+
         self.thumbnail = label("▶")
         self.thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.thumbnail.setFixedSize(152, 86)
+        self.thumbnail.setFixedSize(160, 92)
         self.thumbnail.setStyleSheet("background: #F0F2F5; border-radius: 8px; color: #B7BDC8; font-size: 28px;")
         card_layout.addWidget(self.thumbnail)
+
         details = QVBoxLayout()
-        self.video_title = label("等待添加视频", "Subheading", True)
-        self.video_meta = label("支持普通视频与 Shorts", "Muted", True)
+        details.setSpacing(6)
+        self.video_title = label(t("dl_waiting_title", "等待添加视频"), "Subheading", True)
+        self.video_meta = label(t("dl_waiting_meta", "支持普通视频与 Shorts"), "Muted", True)
         details.addWidget(self.video_title)
         details.addWidget(self.video_meta)
         card_layout.addLayout(details, 1)
         layout.addWidget(card)
 
+        # 模式切换与提示栏
         modes = QHBoxLayout()
         self.mode_group = QButtonGroup(self)
-        for index, title in enumerate(("快速下载", "高清下载")):
+        for index, title in enumerate((t("dl_mode_quick", "快速下载"), t("dl_mode_hd", "高清下载"))):
             control = button(title, role="Mode")
             control.setCheckable(True)
             self.mode_group.addButton(control, index)
@@ -187,60 +278,103 @@ class MainWindow(QMainWindow):
         self.mode_group.button(1).setChecked(True)
         self.mode_group.idClicked.connect(self.change_mode)
         modes.addStretch()
-        modes.addWidget(label("每个选项均包含音频", "Muted"))
+        modes.addWidget(label(t("dl_audio_note", "每个选项均包含音频"), "Muted"))
         layout.addLayout(modes)
+
+        # 格式列表（表格美化，圆角且行高舒适）
         self.formats = QTableWidget(0, 4)
-        self.formats.setHorizontalHeaderLabels(["清晰度", "文件格式 / 编码", "帧率", "预计大小"])
+        self.formats.setHorizontalHeaderLabels([
+            t("dl_th_res", "清晰度"),
+            t("dl_th_format", "文件格式 / 编码"),
+            t("dl_th_fps", "帧率"),
+            t("dl_th_size", "预计大小")
+        ])
         self.formats.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.formats.verticalHeader().hide()
-        self.formats.verticalHeader().setDefaultSectionSize(47)
+        self.formats.verticalHeader().setDefaultSectionSize(48)
         self.formats.setShowGrid(False)
         self.formats.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.formats.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.formats.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.formats.itemSelectionChanged.connect(self.update_actions)
-        self.formats.setMinimumHeight(120)
+        self.formats.setMinimumHeight(130)
         layout.addWidget(self.formats, 1)
-        self.format_hint = label("解析后显示源视频实际提供的清晰度。", "Muted", True)
+
+        self.format_hint = label(t("dl_hint_idle", "解析后显示源视频实际提供的清晰度。"), "Muted", True)
         layout.addWidget(self.format_hint)
 
+        # 进度与状态反馈卡片
         self.progress_card = QFrame()
         self.progress_card.setObjectName("Card")
         progress_layout = QVBoxLayout(self.progress_card)
-        self.progress_title = label("准备下载", "Subheading", True)
+        progress_layout.setContentsMargins(18, 16, 18, 16)
+        progress_layout.setSpacing(10)
+
+        # 五阶段步进指示器
+        self.step_indicator = label("① 准备  →  ② 下载  →  ③ 合并  →  ④ 校验  →  ⑤ 完成", "Eyebrow")
+        progress_layout.addWidget(self.step_indicator)
+
         progress_heading = QHBoxLayout()
+        self.progress_title = label(t("dl_progress_starting", "准备下载"), "Subheading", True)
         progress_heading.addWidget(self.progress_title, 1)
-        self.progress_value = label("准备中", "ProgressValue")
+
+        self.progress_value = label(t("dl_progress_starting_val", "准备中"), "ProgressValue")
         self.progress_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.progress_value.setMinimumWidth(80)
         progress_heading.addWidget(self.progress_value)
+        progress_layout.addLayout(progress_heading)
+
         self.progress_bar = QProgressBar()
         self.progress_bar.setAccessibleName("下载进度")
         self.progress_bar.setTextVisible(False)
-        self.progress_bar.setFixedHeight(16)
-        self.progress_meta = label("", "Muted", True)
-        progress_layout.addLayout(progress_heading)
+        self.progress_bar.setFixedHeight(12)
         progress_layout.addWidget(self.progress_bar)
+
+        self.progress_meta = label("", "Muted", True)
         progress_layout.addWidget(self.progress_meta)
+
+        # 完成快捷操作条（播放与定位文件夹）
+        self.done_actions_row = QHBoxLayout()
+        self.done_actions_row.setContentsMargins(0, 0, 0, 0)
+        self.play_button = button(t("dl_btn_play", "播放视频"), self.play_downloaded)
+        self.open_dir_button = button(t("dl_btn_open_dir", "打开文件夹"), self.reveal_downloaded)
+        self.done_actions_row.addWidget(self.play_button)
+        self.done_actions_row.addWidget(self.open_dir_button)
+        self.done_actions_row.addStretch()
+        self.done_actions_widget = QWidget()
+        self.done_actions_widget.setLayout(self.done_actions_row)
+        self.done_actions_widget.hide()
+        progress_layout.addWidget(self.done_actions_widget)
+
         self.progress_card.hide()
         layout.addWidget(self.progress_card)
 
+        # 底部操作栏
         footer = QHBoxLayout()
         self.folder_label = label("", "Status")
         self.update_folder_label()
         footer.addWidget(self.folder_label, 1)
-        self.cancel_button = button("取消下载", self.cancel_download)
+
+        self.cancel_button = button(t("dl_btn_cancel", "取消下载"), self.cancel_download)
         self.cancel_button.hide()
         footer.addWidget(self.cancel_button)
-        self.download_button = button("下载所选视频", self.start_download, "Primary")
+
+        self.download_button = button(t("dl_btn_download", "下载所选视频"), self.start_download, "Primary")
         self.download_button.setEnabled(False)
         footer.addWidget(self.download_button)
         layout.addLayout(footer)
 
     def _build_history_page(self):
-        layout = self.page("下载记录", "成功下载的文件已验证视频轨和音频轨。")
+        layout = self.page(t("hist_heading", "下载记录"),
+                           t("hist_subtitle", "成功下载的文件已验证视频轨和音频轨。"))
+
         self.history = QTableWidget(0, 4)
-        self.history.setHorizontalHeaderLabels(["视频", "清晰度", "状态", "创建时间"])
+        self.history.setHorizontalHeaderLabels([
+            t("hist_th_video", "视频"),
+            t("hist_th_res", "清晰度"),
+            t("hist_th_state", "状态"),
+            t("hist_th_date", "创建时间")
+        ])
         self.history.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for index in range(1, 4):
             self.history.horizontalHeader().setSectionResizeMode(index, QHeaderView.ResizeMode.ResizeToContents)
@@ -252,73 +386,171 @@ class MainWindow(QMainWindow):
         self.history.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.history.itemSelectionChanged.connect(self.select_history)
         layout.addWidget(self.history, 1)
-        self.history_detail = label("尚无下载记录。", "Muted", True)
+
+        self.history_detail = label(t("hist_empty", "尚无下载记录。"), "Muted", True)
         layout.addWidget(self.history_detail)
+
         buttons = QHBoxLayout()
-        self.reveal_button = button("打开所在文件夹", self.reveal_selected)
-        self.retry_button = button("重新下载", self.retry_selected)
+        self.reveal_button = button(t("hist_btn_reveal", "打开所在文件夹"), self.reveal_selected)
+        self.play_history_button = button(t("dl_btn_play", "播放视频"), self.play_selected_history)
+        self.retry_button = button(t("hist_btn_retry", "重新下载"), self.retry_selected)
         self.reveal_button.setEnabled(False)
+        self.play_history_button.setEnabled(False)
         self.retry_button.setEnabled(False)
         buttons.addWidget(self.reveal_button)
+        buttons.addWidget(self.play_history_button)
         buttons.addWidget(self.retry_button)
         buttons.addStretch()
         layout.addLayout(buttons)
 
     def _build_settings_page(self):
-        layout = self.page("设置", "下载偏好与组件状态都保存在这台电脑上。", scroll=True)
-        layout.addWidget(label("保存位置", "Subheading"))
+        layout = self.page(t("set_heading", "设置"),
+                           t("set_subtitle", "下载偏好与组件状态都保存在这台电脑上。"), scroll=True)
+
+        # 1. 外观与语言设置卡片
+        appearance_card = QFrame()
+        appearance_card.setObjectName("Card")
+        app_layout = QVBoxLayout(appearance_card)
+        app_layout.setContentsMargins(18, 16, 18, 16)
+        app_layout.setSpacing(12)
+        app_layout.addWidget(label(t("set_sec_appearance", "外观与语言"), "Subheading"))
+
+        app_row = QHBoxLayout()
+        app_row.addWidget(label(t("set_theme_label", "界面主题") + "："))
+        self.theme_input = QComboBox()
+        self.theme_input.addItem(t("set_theme_system", "跟随操作系统"), "system")
+        self.theme_input.addItem(t("set_theme_light", "浅色模式"), "light")
+        self.theme_input.addItem(t("set_theme_dark", "深色模式"), "dark")
+        current_theme = self.store.get_setting("theme", "system")
+        idx = self.theme_input.findData(current_theme)
+        if idx >= 0:
+            self.theme_input.setCurrentIndex(idx)
+        self.theme_input.currentIndexChanged.connect(self.on_theme_changed)
+        app_row.addWidget(self.theme_input, 1)
+
+        app_row.addSpacing(20)
+        app_row.addWidget(label(t("set_lang_label", "界面语言") + "："))
+        self.language_input = QComboBox()
+        self.language_input.addItem(t("set_lang_system", "跟随操作系统"), "system")
+        self.language_input.addItem(t("set_lang_zh", "简体中文"), "zh")
+        self.language_input.addItem(t("set_lang_en", "English"), "en")
+        current_lang = self.store.get_setting("language", "system")
+        idx_lang = self.language_input.findData(current_lang)
+        if idx_lang >= 0:
+            self.language_input.setCurrentIndex(idx_lang)
+        self.language_input.currentIndexChanged.connect(self.on_language_changed)
+        app_row.addWidget(self.language_input, 1)
+        app_layout.addLayout(app_row)
+        layout.addWidget(appearance_card)
+
+        # 2. 保存位置卡片
+        dir_card = QFrame()
+        dir_card.setObjectName("Card")
+        dir_layout = QVBoxLayout(dir_card)
+        dir_layout.setContentsMargins(18, 16, 18, 16)
+        dir_layout.setSpacing(10)
+        dir_layout.addWidget(label(t("set_sec_storage", "保存位置"), "Subheading"))
+
         row = QHBoxLayout()
         self.directory_input = QLineEdit(self.directory())
         self.directory_input.setAccessibleName("下载保存位置")
         row.addWidget(self.directory_input, 1)
-        row.addWidget(button("选择文件夹", self.choose_directory))
-        layout.addLayout(row)
-        layout.addWidget(label("代理地址（可选）", "Subheading"))
+        row.addWidget(button(t("set_btn_choose_dir", "选择文件夹"), self.choose_directory))
+        dir_layout.addLayout(row)
+        layout.addWidget(dir_card)
+
+        # 3. 代理设置卡片
+        proxy_card = QFrame()
+        proxy_card.setObjectName("Card")
+        proxy_layout = QVBoxLayout(proxy_card)
+        proxy_layout.setContentsMargins(18, 16, 18, 16)
+        proxy_layout.setSpacing(8)
+        proxy_layout.addWidget(label(t("set_sec_proxy", "代理地址（可选）"), "Subheading"))
         self.proxy_input = QLineEdit(self.store.get_setting("proxy", ""))
         self.proxy_input.setAccessibleName("可选代理地址")
-        self.proxy_input.setPlaceholderText("例如 http://127.0.0.1:7890；留空使用系统网络设置")
-        layout.addWidget(self.proxy_input)
-        layout.addWidget(label("浏览器中的代理扩展不会自动影响桌面助手。代理配置仅保存在本机。", "Muted", True))
-        layout.addWidget(label("关闭窗口时", "Subheading"))
-        close_row = QHBoxLayout()
-        self.close_action_input = QComboBox()
-        self.close_action_input.setAccessibleName("关闭窗口时的操作")
-        self.close_action_input.addItem("最小化到任务栏（继续下载）", "minimize")
-        self.close_action_input.addItem("退出软件", "exit")
-        self.close_action_input.setCurrentIndex(1 if self.store.get_setting("close_action") == "exit" else 0)
-        close_row.addWidget(self.close_action_input, 1)
-        self.close_prompt_input = QCheckBox("关闭时显示操作提示")
-        self.close_prompt_input.setChecked(self.store.get_setting("confirm_close", True))
-        close_row.addWidget(self.close_prompt_input)
-        layout.addLayout(close_row)
-        layout.addWidget(label("最小化后可从任务栏恢复窗口；左侧“退出软件”可直接退出。", "Muted", True))
-        save_row = QHBoxLayout()
-        save_row.addWidget(button("保存设置", self.save_settings, "Primary"))
-        self.settings_notice = label("", "Muted", True)
-        save_row.addWidget(self.settings_notice, 1)
-        layout.addLayout(save_row)
-        layout.addSpacing(8)
-        layout.addWidget(label("YouTube 登录态", "Subheading"))
+        self.proxy_input.setPlaceholderText(t("set_proxy_placeholder", "例如 http://127.0.0.1:7890；留空使用系统网络设置"))
+        proxy_layout.addWidget(self.proxy_input)
+        proxy_layout.addWidget(label(t("set_proxy_note", "浏览器中的代理扩展不会自动影响桌面助手。代理配置仅保存在本机。"), "Muted", True))
+        layout.addWidget(proxy_card)
+
+        # 4. YouTube 登录态卡片（增加“如何导入 Cookie”入口）
+        auth_card = QFrame()
+        auth_card.setObjectName("Card")
+        auth_layout = QVBoxLayout(auth_card)
+        auth_layout.setContentsMargins(18, 16, 18, 16)
+        auth_layout.setSpacing(10)
+
+        auth_header = QHBoxLayout()
+        auth_header.addWidget(label(t("set_sec_auth", "YouTube 登录态"), "Subheading"))
+        auth_header.addStretch()
+        # 显式的“如何导入 Cookie”入口按钮
+        self.cookie_help_btn = button("📖 " + t("set_btn_cookie_help", "如何导入 Cookie？"), self.show_cookie_help)
+        self.cookie_help_btn.setStyleSheet("border-radius: 6px; padding: 4px 10px; font-size: 13px; color: #E53935;")
+        auth_header.addWidget(self.cookie_help_btn)
+        auth_layout.addLayout(auth_header)
+
         auth_row = QHBoxLayout()
-        self.auth_enabled = QCheckBox("使用已导入的登录态")
+        self.auth_enabled = QCheckBox(t("set_auth_use", "使用已导入的登录态"))
         self.auth_enabled.setChecked(bool(self.store.get_setting("use_auth", False) and vault_path().exists()))
         self.auth_enabled.toggled.connect(self.toggle_auth)
         auth_row.addWidget(self.auth_enabled)
         auth_row.addStretch()
-        auth_row.addWidget(button("导入 Cookie", self.import_session))
-        auth_row.addWidget(button("清除", self.clear_session))
-        layout.addLayout(auth_row)
-        self.auth_notice = label("已加密保存登录态，仅此 Windows 用户可读取。" if vault_path().exists()
-                                 else "下载会员或私有视频时，请导入已有观看权限账号的 Netscape Cookie TXT。", "Muted", True)
-        layout.addWidget(self.auth_notice)
+        auth_row.addWidget(button(t("set_btn_import", "导入 Cookie"), self.import_session))
+        auth_row.addWidget(button(t("set_btn_clear", "清除"), self.clear_session))
+        auth_layout.addLayout(auth_row)
+
+        self.auth_notice = label(t("set_auth_notice_saved", "已加密保存登录态，仅此 Windows 用户可读取。") if vault_path().exists()
+                                 else t("set_auth_notice_empty", "下载会员或私有视频时，请导入已有观看权限账号的 Netscape Cookie TXT。"), "Muted", True)
+        auth_layout.addWidget(self.auth_notice)
+        layout.addWidget(auth_card)
+
+        # 5. 关闭窗口与行为卡片
+        close_card = QFrame()
+        close_card.setObjectName("Card")
+        close_layout = QVBoxLayout(close_card)
+        close_layout.setContentsMargins(18, 16, 18, 16)
+        close_layout.setSpacing(10)
+        close_layout.addWidget(label(t("set_sec_window", "关闭窗口时"), "Subheading"))
+
+        close_row = QHBoxLayout()
+        self.close_action_input = QComboBox()
+        self.close_action_input.setAccessibleName("关闭窗口时的操作")
+        self.close_action_input.addItem(t("set_close_minimize", "最小化到任务栏（继续下载）"), "minimize")
+        self.close_action_input.addItem(t("set_close_exit", "退出软件"), "exit")
+        self.close_action_input.setCurrentIndex(1 if self.store.get_setting("close_action") == "exit" else 0)
+        close_row.addWidget(self.close_action_input, 1)
+
+        self.close_prompt_input = QCheckBox(t("set_close_prompt", "关闭时显示操作提示"))
+        self.close_prompt_input.setChecked(self.store.get_setting("confirm_close", True))
+        close_row.addWidget(self.close_prompt_input)
+        close_layout.addLayout(close_row)
+        close_layout.addWidget(label(t("set_close_note", "最小化后可从任务栏恢复窗口；左侧“退出软件”可直接退出。"), "Muted", True))
+        layout.addWidget(close_card)
+
+        # 保存设置操作行
+        save_row = QHBoxLayout()
+        save_row.addWidget(button(t("set_btn_save", "保存设置"), self.save_settings, "Primary"))
+        self.settings_notice = label("", "Muted", True)
+        save_row.addWidget(self.settings_notice, 1)
+        layout.addLayout(save_row)
+        layout.addSpacing(8)
+
+        # 6. 内置组件卡片
+        comp_card = QFrame()
+        comp_card.setObjectName("Card")
+        comp_layout = QVBoxLayout(comp_card)
+        comp_layout.setContentsMargins(18, 16, 18, 16)
+        comp_layout.setSpacing(10)
+
         check_row = QHBoxLayout()
-        check_row.addWidget(label("内置组件", "Subheading"))
+        check_row.addWidget(label(t("set_sec_components", "内置组件"), "Subheading"))
         check_row.addStretch()
-        self.check_button = button("重新检查", self.check_components)
+        self.check_button = button(t("set_btn_recheck", "重新检查"), self.check_components)
         check_row.addWidget(self.check_button)
-        layout.addLayout(check_row)
+        comp_layout.addLayout(check_row)
+
         self.component_table = QTableWidget(0, 2)
-        self.component_table.setHorizontalHeaderLabels(["组件", "状态 / 版本"])
+        self.component_table.setHorizontalHeaderLabels([t("set_comp_th_name", "组件"), t("set_comp_th_status", "状态 / 版本")])
         self.component_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.component_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.component_table.verticalHeader().hide()
@@ -326,8 +558,47 @@ class MainWindow(QMainWindow):
         self.component_table.setShowGrid(False)
         self.component_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.component_table.setMinimumHeight(210)
-        layout.addWidget(self.component_table, 1)
-        layout.addWidget(label("安装包已包含全部下载组件。更新应用时完整安装新版即可，下载文件和历史会保留。", "Muted", True))
+        comp_layout.addWidget(self.component_table, 1)
+        comp_layout.addWidget(label(t("set_comp_note", "安装包已包含全部下载组件。更新应用时完整安装新版即可，下载文件和历史会保留。"), "Muted", True))
+        layout.addWidget(comp_card)
+
+    def on_theme_changed(self, index):
+        theme = self.theme_input.itemData(index)
+        self.store.set_setting("theme", theme)
+        self.apply_theme(theme)
+
+    def on_language_changed(self, index):
+        lang = self.language_input.itemData(index)
+        self.store.set_setting("language", lang)
+        set_language(lang)
+        self.settings_notice.setText("语言设置已更新，重启软件后完整生效。" if lang == "zh" else "Language updated. Full changes apply on restart.")
+
+    def show_cookie_help(self):
+        title = t("cookie_guide_title", "如何导入 YouTube Cookie")
+        content = t("cookie_guide_content", "")
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(title)
+        dialog.setText(title)
+        dialog.setInformativeText(content)
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+        dialog.exec()
+
+    def play_downloaded(self):
+        if self.last_downloaded_path and Path(self.last_downloaded_path).is_file():
+            os.startfile(self.last_downloaded_path)
+
+    def reveal_downloaded(self):
+        if self.last_downloaded_path and Path(self.last_downloaded_path).is_file():
+            subprocess.Popen([str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"), "/select,", str(self.last_downloaded_path)])
+
+    def play_selected_history(self):
+        job = self.selected_job()
+        path = Path(job.get("result", {}).get("path", "")) if job else None
+        if path and path.is_file():
+            os.startfile(path)
+        else:
+            self.history_detail.setText(t("hist_file_missing", "文件已被移动或删除。"))
 
     def directory(self):
         return self.store.get_setting("directory", str(downloads_dir()))
@@ -481,6 +752,8 @@ class MainWindow(QMainWindow):
         self.store.save_job(job)
         self.refresh_history()
         self.show_notice("")
+        if hasattr(self, "done_actions_widget"):
+            self.done_actions_widget.hide()
         self.progress_card.show()
         self.progress_title.setText("准备下载 · " + job["title"])
         self.progress_value.setText("准备中")
@@ -489,6 +762,13 @@ class MainWindow(QMainWindow):
         self.cancel_button.setText("取消下载")
         self.cancel_button.setEnabled(True)
         self.cancel_button.show()
+
+        if hasattr(self, "sidebar_mini_task"):
+            self.sidebar_mini_task.show()
+            self.mini_title.setText(job["title"][:20] + ("…" if len(job["title"]) > 20 else ""))
+            self.mini_progress.setRange(0, 0)
+            self.mini_status.setText("准备中")
+
         worker = WorkerThread({"command": "download", "job_id": job["id"], "url": job["url"],
                                "option_key": option["key"], "directory": job["directory"],
                                "proxy": self.store.get_setting("proxy", ""),
@@ -511,17 +791,42 @@ class MainWindow(QMainWindow):
             self.current_job["state"] = state
             self.store.save_job(self.current_job)
             self.refresh_history()
+
+        step_map = {
+            "starting": "① [准备中]  →  ② 下载  →  ③ 合并  →  ④ 校验  →  ⑤ 完成",
+            "downloading": "① 准备  →  ② [下载中]  →  ③ 合并  →  ④ 校验  →  ⑤ 完成",
+            "merging": "① 准备  →  ② 下载  →  ③ [合并中]  →  ④ 校验  →  ⑤ 完成",
+            "verifying": "① 准备  →  ② 下载  →  ③ 合并  →  ④ [校验中]  →  ⑤ 完成",
+            "completed": "① 准备  →  ② 下载  →  ③ 合并  →  ④ 校验  →  ⑤ [完成]",
+        }
+        if hasattr(self, "step_indicator"):
+            self.step_indicator.setText(step_map.get(state, self.step_indicator.text()))
+
+        if hasattr(self, "sidebar_mini_task"):
+            self.sidebar_mini_task.show()
+            if self.current_job:
+                self.mini_title.setText(self.current_job["title"][:20] + ("…" if len(self.current_job["title"]) > 20 else ""))
+
         self.progress_title.setText(STATE_LABELS.get(state, state) + " · " + self.current_job["title"])
         percent = event.get("percent")
         if percent is None:
             self.progress_bar.setRange(0, 0)
-            self.progress_value.setText({"starting": "准备中", "merging": "合并中",
-                                         "verifying": "校验中"}.get(state, "下载中"))
+            caption = {"starting": "准备中", "merging": "合并中",
+                       "verifying": "校验中"}.get(state, "下载中")
+            self.progress_value.setText(caption)
+            if hasattr(self, "mini_progress"):
+                self.mini_progress.setRange(0, 0)
+                self.mini_status.setText(caption)
         else:
             value = max(0, min(99, int(percent)))
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(value)
             self.progress_value.setText(f"{value}%")
+            if hasattr(self, "mini_progress"):
+                self.mini_progress.setRange(0, 100)
+                self.mini_progress.setValue(value)
+                self.mini_status.setText(f"{value}%")
+
         if state == "downloading":
             details = "已下载 " + size_text(event.get("downloaded_bytes", 0))
             if event.get("total_bytes"):
@@ -564,11 +869,18 @@ class MainWindow(QMainWindow):
         self.current_job.update(state="completed", result=result, error="")
         self.store.save_job(self.current_job)
         self.receipt(self.current_job).unlink(missing_ok=True)
+        self.last_downloaded_path = result.get("path")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_value.setText("100%")
+        if hasattr(self, "step_indicator"):
+            self.step_indicator.setText("① 准备  →  ② 下载  →  ③ 合并  →  ④ 校验  →  ⑤ [完成]")
         self.progress_title.setText("下载完成 · 已验证画面与声音")
         self.progress_meta.setText(size_text(result["verification"]["bytes"]) + "  ·  " + Path(result["path"]).name)
+        if hasattr(self, "done_actions_widget"):
+            self.done_actions_widget.show()
+        if hasattr(self, "sidebar_mini_task"):
+            self.sidebar_mini_task.hide()
         self.current_job = None
         self.refresh_history()
 
@@ -591,6 +903,10 @@ class MainWindow(QMainWindow):
         self.progress_title.setText(STATE_LABELS[state])
         self.progress_meta.setText("可在下载记录中重新下载")
         self.show_notice(message)
+        if hasattr(self, "done_actions_widget"):
+            self.done_actions_widget.hide()
+        if hasattr(self, "sidebar_mini_task"):
+            self.sidebar_mini_task.hide()
         self.current_job = None
         self.refresh_history()
 
@@ -617,7 +933,7 @@ class MainWindow(QMainWindow):
                 item = QTableWidgetItem(text)
                 item.setToolTip(text)
                 if column == 2 and job["state"] == "completed":
-                    item.setForeground(QColor("#168A63"))
+                    item.setForeground(QColor("#10B981"))
                 self.history.setItem(row, column, item)
         self.history_detail.setText("选择记录查看详情。" if self.history_jobs else "尚无下载记录。")
         self.select_history()
@@ -630,7 +946,10 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "reveal_button"):
             return
         job = self.selected_job()
-        self.reveal_button.setEnabled(bool(job and job.get("result", {}).get("path")))
+        has_file = bool(job and job.get("result", {}).get("path"))
+        self.reveal_button.setEnabled(has_file)
+        if hasattr(self, "play_history_button"):
+            self.play_history_button.setEnabled(has_file)
         self.retry_button.setEnabled(bool(job and job["state"] in {"completed", "failed", "cancelled", "interrupted"} and not self.downloader))
         if job:
             self.history_detail.setText(job.get("error") or job.get("result", {}).get("path", "任务正在进行"))
@@ -715,7 +1034,7 @@ class MainWindow(QMainWindow):
             self.component_table.setItem(row, 0, QTableWidgetItem(name))
             item = QTableWidgetItem(("可用  ·  " if status["ok"] else "异常  ·  ") + status["version"])
             item.setToolTip(item.text())
-            item.setForeground(QColor("#168A63" if status["ok"] else "#CE2E37"))
+            item.setForeground(QColor("#10B981" if status["ok"] else "#E53935"))
             self.component_table.setItem(row, 1, item)
         self.ready = bool(result) and all(status["ok"] for status in result.values())
         self.health_label.setText("●  下载组件就绪" if self.ready else "●  请检查内置组件")
