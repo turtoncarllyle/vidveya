@@ -1,3 +1,13 @@
+# v0.1.2
+
+## 中文
+
+修复安装包升级时残留旧 ICU DLL 的问题。安装新版时会主动删除旧版 icuuc.dll、icudt78.dll 和 icuin.dll，避免它们阻止 PySide6.QtCore 加载。
+
+## English
+
+Fixes in-place upgrades that left stale ICU DLLs from an earlier bundle. The installer now removes old icuuc.dll, icudt78.dll, and icuin.dll files so they cannot prevent PySide6.QtCore from loading.
+
 # v0.1.1
 
 ## 中文

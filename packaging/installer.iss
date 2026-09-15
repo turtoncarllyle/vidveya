@@ -1,4 +1,4 @@
-#define AppVersion "0.1.1"
+#define AppVersion "0.1.2"
 [Setup]
 AppId={{C6CBEF96-D7B1-4E70-8493-F192E22D9308}
 AppName=VidVeya
@@ -33,6 +33,14 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "..\dist\VidVeya\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[InstallDelete]
+; Remove ICU DLLs shipped by the broken 0.1.0/early 0.1.1 bundles when
+; upgrading in place. They can shadow the Windows Qt runtime and prevent
+; PySide6.QtCore from loading. New builds do not contain these files.
+Type: files; Name: "{app}\_internal\icuuc.dll"
+Type: files; Name: "{app}\_internal\icudt78.dll"
+Type: files; Name: "{app}\_internal\icuin.dll"
 
 [Icons]
 Name: "{group}\VidVeya"; Filename: "{app}\VidVeya.exe"

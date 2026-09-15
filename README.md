@@ -1,6 +1,6 @@
 # VidVeya
 
-**Windows 本地 YouTube 视频下载助手 · 保留画面与声音**
+**Windows 本地 YouTube 视频下载助手 · 保留画面与声音 / Local Windows YouTube video downloader · video and audio preserved**
 
 VidVeya 是一个独立的 Windows 桌面应用：粘贴 YouTube 或 Shorts 链接，选择源视频实际提供的清晰度，下载完成后由 FFmpeg 合并并由 ffprobe 验证视频轨和音频轨。下载和合并都在本机完成，没有 VidVeya 服务端，也不要求用户另外安装 Python、Node.js、FFmpeg 或 Deno。
 

@@ -1,6 +1,6 @@
 # VidVeya
 
-**A local Windows YouTube downloader that keeps video and audio together.**
+**A local Windows YouTube downloader that keeps video and audio together / Windows 本地 YouTube 视频下载助手 · 保留画面与声音**
 
 VidVeya is a standalone Windows desktop app. Paste a YouTube or Shorts URL, choose a source resolution, and download it locally. yt-dlp resolves the streams, FFmpeg merges separate video and audio, and ffprobe verifies the result before VidVeya reports success. No VidVeya server is involved, and users do not need to install Python, Node.js, FFmpeg, or Deno separately.
 
