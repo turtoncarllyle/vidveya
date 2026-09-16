@@ -497,13 +497,24 @@ class MainWindow(QMainWindow):
                            t("hist_subtitle", "成功下载的文件已验证视频轨和音频轨。"))
 
         # 顶部工具栏（记录总数、清空记录与优雅的表头排序提示）
+        # 顶部工具栏（实时搜索输入框、记录总数、清空记录与排序提示）
         toolbar = QHBoxLayout()
+        toolbar.setSpacing(12)
+
+        self.search_input = QLineEdit()
+        self.search_input.setObjectName("SearchInput")
+        self.search_input.setPlaceholderText(t("hist_search_placeholder", "输入关键词实时筛选历史记录…"))
+        self.search_input.setClearButtonEnabled(True)
+        self.search_input.setMinimumWidth(260)
+        self.search_input.textChanged.connect(self.on_search_text_changed)
+        toolbar.addWidget(self.search_input)
+
         self.history_count_label = label(t("hist_total_records", "共 {count} 条记录").format(count=0), "Muted")
         toolbar.addWidget(self.history_count_label)
 
         tip_label = label("💡 " + t("hist_sort_header_tip", "点击列头可按该列升/降序排序"), "Muted")
         tip_label.setStyleSheet("font-size: 12px;")
-        toolbar.addSpacing(16)
+        toolbar.addSpacing(8)
         toolbar.addWidget(tip_label)
         toolbar.addStretch()
 
@@ -551,7 +562,10 @@ class MainWindow(QMainWindow):
         self.history_detail = label(t("hist_empty", "尚无下载记录。"), "Muted", True)
         layout.addWidget(self.history_detail)
 
-        buttons = QHBoxLayout()
+        # 底部操作栏（维持控件属性供向后兼容与自动化测试，界面隐藏以保持工作台极简纯净，主推双击与右键菜单）
+        self.history_actions_widget = QWidget()
+        buttons = QHBoxLayout(self.history_actions_widget)
+        buttons.setContentsMargins(0, 0, 0, 0)
         self.reveal_button = button(t("hist_btn_reveal", "打开所在文件夹"), self.reveal_selected)
         self.play_history_button = button(t("dl_btn_play", "播放视频"), self.play_selected_history)
         self.retry_button = button(t("hist_btn_retry", "重新下载"), self.retry_selected)
@@ -565,7 +579,8 @@ class MainWindow(QMainWindow):
         buttons.addWidget(self.retry_button)
         buttons.addStretch()
         buttons.addWidget(self.delete_history_button)
-        layout.addLayout(buttons)
+        self.history_actions_widget.hide()
+        layout.addWidget(self.history_actions_widget)
 
     def _build_settings_page(self):
         layout = self.page(t("set_heading", "设置"),
@@ -1253,8 +1268,29 @@ class MainWindow(QMainWindow):
             self._update_header_labels()
         self._render_history_table()
 
+    def on_search_text_changed(self, text: str):
+        self._render_history_table()
+        if hasattr(self, "history_count_label"):
+            total = self.store.job_count()
+            shown = len(getattr(self, "display_jobs", []))
+            if text.strip():
+                self.history_count_label.setText(f"{shown} / 共 {total} 条记录")
+            else:
+                caption = t("hist_total_records", "共 {count} 条记录").format(count=total)
+                if total > len(self.history_jobs):
+                    caption += t("hist_shown_records", "（显示最近 {shown} 条）").format(shown=len(self.history_jobs))
+                self.history_count_label.setText(caption)
+
     def _get_sorted_jobs(self):
         jobs = list(self.history_jobs)
+        search_kw = self.search_input.text().strip().lower() if hasattr(self, "search_input") else ""
+        if search_kw:
+            jobs = [
+                j for j in jobs
+                if search_kw in (j.get("title") or "").lower()
+                or search_kw in (j.get("url") or "").lower()
+                or search_kw in (j.get("id") or "").lower()
+            ]
         col = getattr(self, "current_sort_column", 3)
         order = getattr(self, "current_sort_order", Qt.SortOrder.DescendingOrder)
         is_reverse = (order == Qt.SortOrder.DescendingOrder)
@@ -1283,10 +1319,15 @@ class MainWindow(QMainWindow):
         self.history_jobs = self.store.jobs()
         if hasattr(self, "history_count_label"):
             total = self.store.job_count()
-            caption = t("hist_total_records", "共 {count} 条记录").format(count=total)
-            if total > len(self.history_jobs):
-                caption += t("hist_shown_records", "（显示最近 {shown} 条）").format(shown=len(self.history_jobs))
-            self.history_count_label.setText(caption)
+            search_kw = self.search_input.text().strip() if hasattr(self, "search_input") else ""
+            if search_kw:
+                shown = len(getattr(self, "display_jobs", []))
+                self.history_count_label.setText(f"{shown} / 共 {total} 条记录")
+            else:
+                caption = t("hist_total_records", "共 {count} 条记录").format(count=total)
+                if total > len(self.history_jobs):
+                    caption += t("hist_shown_records", "（显示最近 {shown} 条）").format(shown=len(self.history_jobs))
+                self.history_count_label.setText(caption)
         if hasattr(self, "clear_history_button"):
             self.clear_history_button.setEnabled(any(job["state"] not in ACTIVE_STATES for job in self.history_jobs))
         self._render_history_table()
@@ -1342,7 +1383,11 @@ class MainWindow(QMainWindow):
                 if job["id"] == selected_id:
                     self.history.selectRow(row)
 
-        self.history_detail.setText(t("hist_select_hint", "选择记录查看详情。") if self.display_jobs else t("hist_empty", "尚无下载记录。"))
+        if not self.display_jobs:
+            search_kw = self.search_input.text().strip() if hasattr(self, "search_input") else ""
+            self.history_detail.setText(t("hist_filter_empty", "未找到匹配的记录") if search_kw else t("hist_empty", "尚无下载记录。"))
+        else:
+            self.history_detail.setText(t("hist_select_hint", "选择记录查看详情。"))
         self.select_history()
 
     def selected_job(self):
@@ -1363,6 +1408,9 @@ class MainWindow(QMainWindow):
         self.retry_button.setEnabled(bool(job and job["state"] in {"completed", "failed", "cancelled", "interrupted"} and not self.downloader))
         if job:
             self.history_detail.setText(job.get("error") or job.get("result", {}).get("path", t("hist_in_progress", "任务正在进行")))
+        elif not self.display_jobs:
+            search_kw = self.search_input.text().strip() if hasattr(self, "search_input") else ""
+            self.history_detail.setText(t("hist_filter_empty", "未找到匹配的记录") if search_kw else t("hist_empty", "尚无下载记录。"))
 
     def reveal_selected(self):
         job = self.selected_job()

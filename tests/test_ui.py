@@ -588,3 +588,30 @@ def test_download_page_hero_input_and_quality_chips(make_window, media_info):
     assert window.formats.currentRow() == other_idx
     assert window.quality_chips[other_idx].property("selected") == "true"
 
+
+def test_history_search_filter_and_clean_ui(make_window):
+    window = make_window()
+    window.show()
+    assert hasattr(window, "search_input")
+    assert window.search_input.objectName() == "SearchInput"
+    assert hasattr(window, "history_actions_widget")
+    assert not window.history_actions_widget.isVisible()
+
+    window.store.save_job({"id": "job1", "state": "completed", "created": "2026-09-16T10:00:00",
+                           "title": "Python Tutorial 2026", "option": {"resolution": 1080, "container": "mp4"}})
+    window.store.save_job({"id": "job2", "state": "completed", "created": "2026-09-16T11:00:00",
+                           "title": "Music Video HD", "option": {"resolution": 720, "container": "mp4"}})
+    window.refresh_history()
+    assert len(window.display_jobs) == 2
+
+    window.search_input.setText("python")
+    assert len(window.display_jobs) == 1
+    assert window.display_jobs[0]["id"] == "job1"
+
+    window.search_input.setText("nonexistentxyz")
+    assert len(window.display_jobs) == 0
+
+    window.search_input.clear()
+    assert len(window.display_jobs) == 2
+
+
