@@ -36,6 +36,10 @@ def components_dir() -> Path:
     return resource_root() / ".tooling" / "runtime"
 
 
+def asset_path(filename: str) -> Path:
+    return resource_root() / "assets" / filename
+
+
 def safe_name(title: str, video_id: str, resolution: int, extension: str) -> str:
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", title).strip(" .")
     # Keep ample room for the directory and suffix on traditional Windows paths.

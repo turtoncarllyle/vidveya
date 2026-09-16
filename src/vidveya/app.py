@@ -9,6 +9,7 @@ from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
+from .i18n import install_qt_translator, set_language, t
 from .paths import data_dir, resource_root
 from .store import Store
 from .ui.style import STYLE
@@ -34,9 +35,15 @@ def main():
     lock = QLockFile(str(root / "application.lock"))
     lock.setStaleLockTime(0)
     if not lock.tryLock(100):
-        QMessageBox.information(None, "VidVeya", "VidVeya 已在运行，请切换到已打开的窗口。")
+        # Even before store loads, attempt system/default translation
+        set_language("system")
+        install_qt_translator(application)
+        QMessageBox.information(None, "VidVeya", t("app_already_running", "VidVeya 已经在运行中。\n请检查任务栏或右下角托盘图标。"))
         return 0
     store = Store(root / "vidveya.db")
+    saved_lang = store.get_setting("language", "system")
+    resolved_lang = set_language(saved_lang)
+    install_qt_translator(application, resolved_lang)
     window = MainWindow(store)
     window.show()
     if args.fixture:

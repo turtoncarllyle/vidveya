@@ -546,3 +546,11 @@ def test_stylesheet_contains_modern_tokens():
         assert "HeroInput" in qss
         assert "SearchInput" in qss
         assert "InlineAction" in qss
+
+
+def test_new_modern_i18n_keys():
+    from vidveya.i18n import t, set_language
+    for lang in ("zh", "en"):
+        set_language(lang)
+        for key in ("hist_search_placeholder", "dl_recommended", "set_auto_saved", "dl_quality_title", "dl_audio_only"):
+            assert t(key) != key

@@ -17,8 +17,13 @@ TRANSLATIONS = {
         "dl_subtitle": "粘贴 YouTube 或 Shorts 链接，选择清晰度，保留画面与声音。",
         "dl_url_placeholder": "https://www.youtube.com/watch?v=…",
         "dl_paste": "粘贴",
+        "dl_clear": "清空",
         "dl_analyze": "解析视频",
         "dl_analyzing": "解析中…",
+        "dl_quality_title": "选择下载清晰度",
+        "dl_recommended": "推荐",
+        "dl_audio_only": "仅提取音频",
+        "dl_btn_download_quality": "立即下载所选清晰度",
         "dl_waiting_title": "等待添加视频",
         "dl_waiting_meta": "支持普通视频与 Shorts",
         "dl_reading_info": "正在读取视频信息…",
@@ -56,6 +61,11 @@ TRANSLATIONS = {
         "dl_save_to": "保存至",
         "hist_heading": "下载记录",
         "hist_subtitle": "成功下载的文件已验证视频轨和音频轨。",
+        "hist_search_placeholder": "输入关键词实时筛选历史记录…",
+        "hist_all_records": "全部记录",
+        "hist_filter_empty": "未找到匹配的记录",
+        "hist_action_play": "播放",
+        "hist_action_open": "打开",
         "hist_th_video": "视频",
         "hist_th_res": "清晰度",
         "hist_th_state": "状态",
@@ -106,9 +116,10 @@ TRANSLATIONS = {
         "set_close_minimize": "最小化到任务栏（继续下载）",
         "set_close_exit": "退出软件",
         "set_close_prompt": "关闭时显示操作提示",
-        "set_close_note": "最小化后可从任务栏恢复窗口；左侧“退出软件”可直接退出。",
+        "set_close_note": "最小化后可从任务栏重新唤起；可随时在设置中更改此行为。",
         "set_btn_save": "保存设置",
         "set_save_success": "已保存。设置立即生效，下载设置用于下次下载。",
+        "set_auto_saved": "设置已自动保存",
         "set_sec_auth": "YouTube 登录态",
         "set_auth_use": "使用已导入的登录态",
         "set_btn_import": "导入 Cookie",
@@ -136,6 +147,37 @@ TRANSLATIONS = {
             "【安全保证】\n"
             "VidVeya 采用 Windows DPAPI 硬件级加密保存凭据，绝不上报服务器；导入成功后建议直接删除明文 TXT 文件。"
         ),
+        "btn_ok": "确定",
+        "btn_cancel": "取消",
+        "btn_yes": "是",
+        "btn_no": "否",
+        "btn_confirm": "确认",
+        "btn_minimize": "最小化",
+        "btn_exit": "退出软件",
+        "btn_remember": "记住我的选择，不再提示",
+        "dialog_close_title": "关闭 VidVeya",
+        "dialog_close_text": "请选择关闭窗口时的操作：",
+        "dialog_close_minimize_msg": "关闭窗口后将最小化到任务栏，下载会继续。",
+        "dialog_close_exit_msg": "关闭窗口后将退出 VidVeya。",
+        "dialog_exit_confirm_title": "确认退出",
+        "dialog_downloading_exit_text": "当前有下载正在进行中，退出将取消当前任务。\n确定要退出吗？",
+        "step_prep": "准备",
+        "step_download": "下载",
+        "step_merge": "合并",
+        "step_done": "完成",
+        "step_error": "异常",
+        "size_pending": "大小待确定",
+        "access_public": "公开视频",
+        "access_unlisted": "不公开视频",
+        "access_private": "私享视频",
+        "access_premium": "YouTube Premium 会员专属视频",
+        "access_login_required": "需要登录账号访问",
+        "access_age_restricted": "年龄限制内容",
+        "file_filter_text": "文本文件 (*.txt);;所有文件 (*.*)",
+        "select_save_dir": "选择保存目录",
+        "select_cookie_file": "选择 Cookie 文件",
+        "app_already_running": "VidVeya 已经在运行中。\n请检查任务栏或右下角托盘图标。",
+        "app_already_running_title": "提示",
         "state_starting": "准备下载",
         "state_downloading": "正在下载",
         "state_merging": "正在合并",
@@ -160,8 +202,13 @@ TRANSLATIONS = {
         "dl_subtitle": "Paste YouTube or Shorts links, choose resolution, preserve video & audio.",
         "dl_url_placeholder": "https://www.youtube.com/watch?v=…",
         "dl_paste": "Paste",
+        "dl_clear": "Clear",
         "dl_analyze": "Analyze",
         "dl_analyzing": "Analyzing…",
+        "dl_quality_title": "Select Quality",
+        "dl_recommended": "Recommended",
+        "dl_audio_only": "Audio Only",
+        "dl_btn_download_quality": "Download Selected Quality",
         "dl_waiting_title": "Waiting for video",
         "dl_waiting_meta": "Supports regular videos & Shorts",
         "dl_reading_info": "Reading video details…",
@@ -199,6 +246,11 @@ TRANSLATIONS = {
         "dl_save_to": "Save to",
         "hist_heading": "Download History",
         "hist_subtitle": "Completed files are verified with video and audio tracks.",
+        "hist_search_placeholder": "Filter history by keywords…",
+        "hist_all_records": "All Records",
+        "hist_filter_empty": "No matching records found",
+        "hist_action_play": "Play",
+        "hist_action_open": "Open",
         "hist_th_video": "Video",
         "hist_th_res": "Resolution",
         "hist_th_state": "Status",
@@ -249,9 +301,10 @@ TRANSLATIONS = {
         "set_close_minimize": "Minimize to taskbar (continue download)",
         "set_close_exit": "Exit VidVeya",
         "set_close_prompt": "Show prompt when closing",
-        "set_close_note": "Restore from the taskbar; click 'Exit' on the left to quit directly.",
+        "set_close_note": "Restore from the taskbar; you can change this behavior anytime in settings.",
         "set_btn_save": "Save Settings",
         "set_save_success": "Saved. Preferences take effect immediately.",
+        "set_auto_saved": "Settings saved automatically",
         "set_sec_auth": "YouTube Session",
         "set_auth_use": "Use imported session",
         "set_btn_import": "Import Cookie",
@@ -279,6 +332,37 @@ TRANSLATIONS = {
             "[Security Guarantee]\n"
             "VidVeya encrypts cookies locally via Windows DPAPI and never uploads them. You can delete the plain TXT after importing."
         ),
+        "btn_ok": "OK",
+        "btn_cancel": "Cancel",
+        "btn_yes": "Yes",
+        "btn_no": "No",
+        "btn_confirm": "Confirm",
+        "btn_minimize": "Minimize",
+        "btn_exit": "Exit VidVeya",
+        "btn_remember": "Remember my choice and do not ask again",
+        "dialog_close_title": "Close VidVeya",
+        "dialog_close_text": "Please select what to do when closing the window:",
+        "dialog_close_minimize_msg": "Closing the window will minimize it to the taskbar; downloads will continue.",
+        "dialog_close_exit_msg": "Closing the window will exit VidVeya.",
+        "dialog_exit_confirm_title": "Confirm Exit",
+        "dialog_downloading_exit_text": "Downloads are in progress. Exiting will cancel active tasks.\nAre you sure you want to exit?",
+        "step_prep": "Prep",
+        "step_download": "Download",
+        "step_merge": "Merge",
+        "step_done": "Done",
+        "step_error": "Error",
+        "size_pending": "Size pending",
+        "access_public": "Public",
+        "access_unlisted": "Unlisted",
+        "access_private": "Private",
+        "access_premium": "YouTube Premium required",
+        "access_login_required": "Login required",
+        "access_age_restricted": "Age restricted",
+        "file_filter_text": "Text Files (*.txt);;All Files (*.*)",
+        "select_save_dir": "Select Download Directory",
+        "select_cookie_file": "Select Cookie File",
+        "app_already_running": "VidVeya is already running.\nPlease check the taskbar or system tray.",
+        "app_already_running_title": "Notice",
         "state_starting": "Preparing",
         "state_downloading": "Downloading",
         "state_merging": "Merging",
@@ -312,6 +396,43 @@ def detect_system_language() -> str:
     return "en"
 
 
+_QT_TRANSLATORS = []
+
+
+def install_qt_translator(app=None, lang: str | None = None) -> bool:
+    """Load and install qtbase translations for the given language.
+    If app is None, QCoreApplication.instance() is used.
+    """
+    try:
+        from PySide6.QtCore import QCoreApplication, QLibraryInfo, QTranslator
+    except ImportError:
+        return False
+
+    if app is None:
+        app = QCoreApplication.instance()
+    if app is None:
+        return False
+
+    global _QT_TRANSLATORS
+    for tr in _QT_TRANSLATORS:
+        try:
+            app.removeTranslator(tr)
+        except Exception:
+            pass
+    _QT_TRANSLATORS.clear()
+
+    current_lang = lang or _CURRENT_LANG
+    if current_lang == "zh":
+        trans_dir = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+        for name in ("qtbase_zh_CN.qm", "qt_zh_CN.qm"):
+            tr = QTranslator(app)
+            if tr.load(name, trans_dir):
+                app.installTranslator(tr)
+                _QT_TRANSLATORS.append(tr)
+        return len(_QT_TRANSLATORS) > 0
+    return True
+
+
 def set_language(lang_code: str) -> str:
     """Set active language ('system', 'zh', or 'en'). Returns resolved language ('zh' or 'en')."""
     global _CURRENT_LANG
@@ -322,6 +443,7 @@ def set_language(lang_code: str) -> str:
     else:
         resolved = "en"
     _CURRENT_LANG = resolved
+    install_qt_translator(lang=resolved)
     return resolved
 
 

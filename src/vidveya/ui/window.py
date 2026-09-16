@@ -42,7 +42,19 @@ def format_local_datetime(iso_str: str) -> str:
 
 def combo_box(accessible_name=""):
     box = QComboBox()
-    box.setView(QListView())
+    view = QListView()
+    view.setUniformItemSizes(True)
+    view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    box.setView(view)
+    container = view.parentWidget()
+    if container:
+        container.setWindowFlags(
+            Qt.WindowType.Popup
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.NoDropShadowWindowHint
+        )
+        container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
     if accessible_name:
         box.setAccessibleName(accessible_name)
     return box
@@ -67,7 +79,7 @@ def button(text, callback=None, role=""):
 
 def size_text(value):
     if value is None:
-        return "大小待确定"
+        return t("size_pending", "大小待确定")
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if value < 1024 or unit == "TB":
             return f"{value:.1f} {unit}"
@@ -221,10 +233,6 @@ class MainWindow(QMainWindow):
         sep.setFixedHeight(1)
         sep.setStyleSheet("background: rgba(148, 163, 184, 0.25); border: none;")
         footer_layout.addWidget(sep)
-
-        self.exit_button = button(f"⏻  {t('nav_exit', '退出软件')}", self.request_exit, "ExitButton")
-        self.exit_button.setToolTip("退出 VidVeya")
-        footer_layout.addWidget(self.exit_button)
 
         self.health_label = label(t("nav_checking", "正在检查组件…"), "Status", True)
         self.health_label.setStyleSheet("font-size: 11px; padding: 2px 4px;")
@@ -648,8 +656,10 @@ class MainWindow(QMainWindow):
     def on_language_changed(self, index):
         lang = self.language_input.itemData(index)
         self.store.set_setting("language", lang)
-        set_language(lang)
-        self.settings_notice.setText("语言设置已更新，重启软件后完整生效。" if lang == "zh" else "Language updated. Full changes apply on restart.")
+        resolved = set_language(lang)
+        from ..i18n import install_qt_translator
+        install_qt_translator(QApplication.instance(), resolved)
+        self.settings_notice.setText("语言设置已更新，重启软件后完整生效。" if resolved == "zh" else "Language updated. Full changes apply on restart.")
 
     def show_cookie_help(self):
         title = t("cookie_guide_title", "如何导入 YouTube Cookie")
@@ -660,6 +670,9 @@ class MainWindow(QMainWindow):
         dialog.setInformativeText(content)
         dialog.setIcon(QMessageBox.Icon.Information)
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+        ok_btn = dialog.button(QMessageBox.StandardButton.Ok)
+        if ok_btn:
+            ok_btn.setText(t("btn_ok", "确定"))
         dialog.exec()
 
     def play_downloaded(self):
@@ -675,7 +688,8 @@ class MainWindow(QMainWindow):
 
     def update_folder_label(self):
         text = self.directory()
-        self.folder_label.setText("保存至 " + (text if len(text) < 48 else "…" + text[-45:]))
+        prefix = t("dl_save_to", "保存至")
+        self.folder_label.setText(f"{prefix} " + (text if len(text) < 48 else "…" + text[-45:]))
         self.folder_label.setToolTip(text)
 
     def show_notice(self, text):
@@ -694,7 +708,7 @@ class MainWindow(QMainWindow):
     def worker_finished(self, worker):
         if worker is self.inspection:
             self.inspection = None
-            self.parse_button.setText("解析视频")
+            self.parse_button.setText(t("dl_analyze", "解析视频"))
             self.parse_button.setEnabled(self.ready)
         if worker is self.downloader:
             self.downloader = None
@@ -717,7 +731,7 @@ class MainWindow(QMainWindow):
     def analyze(self):
         if self.inspection or not self.ready:
             if not self.ready:
-                self.show_notice("请先在设置中确认内置组件可用。")
+                self.show_notice(t("nav_not_ready", "请先在设置中确认内置组件可用。"))
             return
         try:
             url = normalize_url(self.url_input.text())
@@ -726,25 +740,32 @@ class MainWindow(QMainWindow):
             return
         self.invalidate_video()
         self.show_notice("")
-        self.video_title.setText("正在读取视频信息…")
-        self.video_meta.setText("正在查询可用清晰度和音轨")
+        self.video_title.setText(t("dl_reading_info", "正在读取视频信息…"))
+        self.video_meta.setText(t("dl_querying_meta", "正在查询可用清晰度和音轨"))
         self.thumbnail.clear()
         self.parse_button.setEnabled(False)
-        self.parse_button.setText("解析中…")
+        self.parse_button.setText(t("dl_analyzing", "解析中…"))
         self.inspection = self.spawn({"command": "analyze", "url": url, "proxy": self.store.get_setting("proxy", ""),
                                       "use_auth": self.store.get_setting("use_auth", False)},
                                      self.show_video, self.analysis_error)
 
     def analysis_error(self, message):
         self.show_notice(message)
-        self.video_title.setText("暂时无法读取视频")
-        self.video_meta.setText("检查链接和网络后重新解析")
+        self.video_title.setText(t("dl_error_title", "暂时无法读取视频"))
+        self.video_meta.setText(t("dl_error_meta", "检查链接和网络后重新解析"))
 
     def show_video(self, info):
         self.video = info
         self.video_title.setText(info["title"])
-        access = {"public": "公开视频", "unlisted": "不公开列出", "subscriber_only": "频道会员视频",
-                  "premium_only": "付费视频", "private": "私有视频", "needs_auth": "已授权访问"}.get(info.get("availability"), "可访问")
+        access_map = {
+            "public": t("access_public", "公开视频"),
+            "unlisted": t("access_unlisted", "不公开视频"),
+            "subscriber_only": t("access_premium", "频道会员专属视频"),
+            "premium_only": t("access_premium", "YouTube Premium 专属视频"),
+            "private": t("access_private", "私享视频"),
+            "needs_auth": t("access_login_required", "需要登录账号访问"),
+        }
+        access = access_map.get(info.get("availability"), t("access_public", "公开视频"))
         self.video_meta.setText(f"{info['channel']}  ·  {duration_text(info['duration'])}  ·  {access}")
         has_hd = any(option["resolution"] > 720 for option in info["options"])
         self.quick = not has_hd
@@ -825,11 +846,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, "done_actions_widget"):
             self.done_actions_widget.hide()
         self.progress_card.show()
-        self.progress_title.setText("准备下载 · " + job["title"])
-        self.progress_value.setText("准备中")
+        self.progress_title.setText(t("dl_progress_starting", "准备下载") + " · " + job["title"])
+        self.progress_value.setText(t("dl_progress_starting_val", "准备中"))
         self.progress_bar.setRange(0, 0)
-        self.progress_meta.setText("正在刷新所选格式和音频")
-        self.cancel_button.setText("取消下载")
+        self.progress_meta.setText(t("dl_progress_refreshing", "正在刷新所选格式和音频"))
+        self.cancel_button.setText(t("dl_btn_cancel", "取消下载"))
         self.cancel_button.setEnabled(True)
         self.cancel_button.show()
 
@@ -837,7 +858,7 @@ class MainWindow(QMainWindow):
             self.sidebar_mini_task.show()
             self.mini_title.setText(job["title"][:20] + ("…" if len(job["title"]) > 20 else ""))
             self.mini_progress.setRange(0, 0)
-            self.mini_status.setText("准备中")
+            self.mini_status.setText(t("dl_progress_starting_val", "准备中"))
 
         worker = WorkerThread({"command": "download", "job_id": job["id"], "url": job["url"],
                                "option_key": option["key"], "directory": job["directory"],
@@ -862,12 +883,17 @@ class MainWindow(QMainWindow):
             self.store.save_job(self.current_job)
             self.refresh_history()
 
+        p1 = t("step_prep", "准备")
+        p2 = t("step_download", "下载")
+        p3 = t("step_merge", "合并")
+        p4 = t("dl_progress_verifying_val", "校验")
+        p5 = t("step_done", "完成")
         step_map = {
-            "starting": "① [准备中]  →  ② 下载  →  ③ 合并  →  ④ 校验  →  ⑤ 完成",
-            "downloading": "① 准备  →  ② [下载中]  →  ③ 合并  →  ④ 校验  →  ⑤ 完成",
-            "merging": "① 准备  →  ② 下载  →  ③ [合并中]  →  ④ 校验  →  ⑤ 完成",
-            "verifying": "① 准备  →  ② 下载  →  ③ 合并  →  ④ [校验中]  →  ⑤ 完成",
-            "completed": "① 准备  →  ② 下载  →  ③ 合并  →  ④ 校验  →  ⑤ [完成]",
+            "starting": f"① [{p1}]  →  ② {p2}  →  ③ {p3}  →  ④ {p4}  →  ⑤ {p5}",
+            "downloading": f"① {p1}  →  ② [{p2}]  →  ③ {p3}  →  ④ {p4}  →  ⑤ {p5}",
+            "merging": f"① {p1}  →  ② {p2}  →  ③ [{p3}]  →  ④ {p4}  →  ⑤ {p5}",
+            "verifying": f"① {p1}  →  ② {p2}  →  ③ {p3}  →  ④ [{p4}]  →  ⑤ {p5}",
+            "completed": f"① {p1}  →  ② {p2}  →  ③ {p3}  →  ④ {p4}  →  ⑤ [{p5}]",
         }
         if hasattr(self, "step_indicator"):
             self.step_indicator.setText(step_map.get(state, self.step_indicator.text()))
@@ -881,8 +907,11 @@ class MainWindow(QMainWindow):
         percent = event.get("percent")
         if percent is None:
             self.progress_bar.setRange(0, 0)
-            caption = {"starting": "准备中", "merging": "合并中",
-                       "verifying": "校验中"}.get(state, "下载中")
+            caption = {
+                "starting": t("dl_progress_starting_val", "准备中"),
+                "merging": t("dl_progress_merging_val", "合并中"),
+                "verifying": t("dl_progress_verifying_val", "校验中"),
+            }.get(state, t("dl_progress_downloading_val", "下载中"))
             self.progress_value.setText(caption)
             if hasattr(self, "mini_progress"):
                 self.mini_progress.setRange(0, 0)
@@ -898,19 +927,22 @@ class MainWindow(QMainWindow):
                 self.mini_status.setText(f"{value}%")
 
         if state == "downloading":
-            details = "已下载 " + size_text(event.get("downloaded_bytes", 0))
+            details = t("dl_downloaded", "已下载") + " " + size_text(event.get("downloaded_bytes", 0))
             if event.get("total_bytes"):
                 details += " / " + size_text(event["total_bytes"])
             else:
-                details += "  ·  总大小待确定"
+                details += "  ·  " + t("dl_total_unknown", "总大小待确定")
             if event.get("speed"):
                 details += "  ·  " + size_text(event["speed"]) + "/s"
             if event.get("eta") is not None:
-                details += "  ·  剩余 " + duration_text(event["eta"])
+                details += "  ·  " + t("dl_eta", "剩余") + " " + duration_text(event["eta"])
             self.progress_meta.setText(details)
         else:
-            self.progress_meta.setText({"starting": "正在刷新所选格式和音频", "merging": "正在无损合并画面与声音",
-                                        "verifying": "正在检查视频轨、音频轨和时长"}.get(state, ""))
+            self.progress_meta.setText({
+                "starting": t("dl_progress_refreshing", "正在刷新所选格式和音频"),
+                "merging": t("dl_progress_merging_meta", "正在无损合并画面与声音"),
+                "verifying": t("dl_progress_verifying_meta", "正在检查视频轨、音频轨和时长"),
+            }.get(state, ""))
 
     def receipt(self, job):
         return Path(job["directory"]) / ".vidveya-tmp" / f"{job['id']}.completed.json"
@@ -943,9 +975,14 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_value.setText("100%")
+        p1 = t("step_prep", "准备")
+        p2 = t("step_download", "下载")
+        p3 = t("step_merge", "合并")
+        p4 = t("dl_progress_verifying_val", "校验")
+        p5 = t("step_done", "完成")
         if hasattr(self, "step_indicator"):
-            self.step_indicator.setText("① 准备  →  ② 下载  →  ③ 合并  →  ④ 校验  →  ⑤ [完成]")
-        self.progress_title.setText("下载完成 · 已验证画面与声音")
+            self.step_indicator.setText(f"① {p1}  →  ② {p2}  →  ③ {p3}  →  ④ {p4}  →  ⑤ [{p5}]")
+        self.progress_title.setText(t("dl_progress_completed", "下载完成 · 已验证画面与声音"))
         self.progress_meta.setText(size_text(result["verification"]["bytes"]) + "  ·  " + Path(result["path"]).name)
         if hasattr(self, "done_actions_widget"):
             self.done_actions_widget.show()
@@ -1289,7 +1326,7 @@ class MainWindow(QMainWindow):
             self.retry_selected()
 
     def choose_directory(self):
-        chosen = QFileDialog.getExistingDirectory(self, "选择下载保存位置", self.directory_input.text())
+        chosen = QFileDialog.getExistingDirectory(self, t("select_save_dir", "选择保存目录"), self.directory_input.text())
         if chosen:
             self.directory_input.setText(chosen)
 
@@ -1307,7 +1344,7 @@ class MainWindow(QMainWindow):
             self.store.set_setting("close_action", self.close_action_input.currentData())
             self.store.set_setting("confirm_close", self.close_prompt_input.isChecked())
             self.update_folder_label()
-            self.settings_notice.setText("已保存。关闭方式立即生效，下载设置用于下次下载。")
+            self.settings_notice.setText(t("set_save_success", "已保存。设置立即生效，下载设置用于下次下载。"))
         except (UserError, OSError) as error:
             self.settings_notice.setText(str(error))
 
@@ -1319,7 +1356,12 @@ class MainWindow(QMainWindow):
         self.store.set_setting("use_auth", checked)
 
     def import_session(self):
-        filename, _ = QFileDialog.getOpenFileName(self, "导入 YouTube Cookie（Netscape 格式）", "", "Cookie 文本 (*.txt);;所有文件 (*)")
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            t("select_cookie_file", "选择 Cookie 文件"),
+            "",
+            t("file_filter_text", "文本文件 (*.txt);;所有文件 (*.*)"),
+        )
         if not filename:
             return
         try:
@@ -1343,7 +1385,7 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "check_button") or not self.check_button.isEnabled():
             return
         self.check_button.setEnabled(False)
-        self.check_button.setText("检查中…")
+        self.check_button.setText(t("dl_analyzing", "检查中…"))
         self.parse_button.setEnabled(False)
         self.spawn({"command": "diagnostics"}, self.components_checked, self.component_error)
 
@@ -1351,24 +1393,25 @@ class MainWindow(QMainWindow):
         self.component_table.setRowCount(len(result))
         for row, (name, status) in enumerate(result.items()):
             self.component_table.setItem(row, 0, QTableWidgetItem(name))
-            item = QTableWidgetItem(("可用  ·  " if status["ok"] else "异常  ·  ") + status["version"])
+            status_txt = (t("set_comp_ok", "可用") + "  ·  " if status["ok"] else t("set_comp_error", "异常") + "  ·  ") + status["version"]
+            item = QTableWidgetItem(status_txt)
             item.setToolTip(item.text())
             item.setForeground(QColor("#10B981" if status["ok"] else "#E53935"))
             self.component_table.setItem(row, 1, item)
         self.ready = bool(result) and all(status["ok"] for status in result.values())
-        self.health_label.setText("●  下载组件就绪" if self.ready else "●  请检查内置组件")
+        self.health_label.setText(t("nav_ready", "●  下载组件就绪") if self.ready else t("nav_not_ready", "●  请检查内置组件"))
         self.check_button.setEnabled(True)
-        self.check_button.setText("重新检查")
+        self.check_button.setText(t("set_btn_recheck", "重新检查"))
         self.parse_button.setEnabled(self.ready and not self.inspection)
         if not self.ready:
-            self.show_notice("部分内置组件不可用，请在设置中查看详情，或重新完整安装。")
+            self.show_notice(t("nav_not_ready", "部分内置组件不可用，请在设置中查看详情，或重新完整安装。"))
         self.update_actions()
 
     def component_error(self, message):
         self.ready = False
-        self.health_label.setText("●  组件检查失败")
+        self.health_label.setText(t("nav_check_failed", "●  组件检查失败"))
         self.check_button.setEnabled(True)
-        self.check_button.setText("重新检查")
+        self.check_button.setText(t("set_btn_recheck", "重新检查"))
         self.show_notice(message)
         self.update_actions()
 
@@ -1382,17 +1425,19 @@ class MainWindow(QMainWindow):
 
     def ask_close_action(self, action):
         dialog = QMessageBox(self)
-        dialog.setWindowTitle("关闭窗口")
+        dialog.setWindowTitle(t("dialog_close_title", "关闭 VidVeya"))
         dialog.setIcon(QMessageBox.Icon.Information)
-        dialog.setText("关闭窗口后将最小化到任务栏，下载会继续。" if action == "minimize"
-                       else "关闭窗口后将退出 VidVeya。")
-        dialog.setInformativeText("可选择本次操作，或在“设置 → 关闭窗口时”修改默认行为。")
-        minimize = dialog.addButton("最小化", QMessageBox.ButtonRole.AcceptRole)
-        quit_button = dialog.addButton("退出软件", QMessageBox.ButtonRole.DestructiveRole)
-        cancel = dialog.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        dialog.setText(
+            t("dialog_close_minimize_msg", "关闭窗口后将最小化到任务栏，下载会继续。") if action == "minimize"
+            else t("dialog_close_exit_msg", "关闭窗口后将退出 VidVeya。")
+        )
+        dialog.setInformativeText(t("dialog_close_text", "请选择关闭窗口时的操作："))
+        minimize = dialog.addButton(t("btn_minimize", "最小化"), QMessageBox.ButtonRole.AcceptRole)
+        quit_button = dialog.addButton(t("btn_exit", "退出软件"), QMessageBox.ButtonRole.DestructiveRole)
+        cancel = dialog.addButton(t("btn_cancel", "取消"), QMessageBox.ButtonRole.RejectRole)
         dialog.setDefaultButton(quit_button if action == "exit" else minimize)
         dialog.setEscapeButton(cancel)
-        remember = QCheckBox("记住我的选择，不再提示", dialog)
+        remember = QCheckBox(t("btn_remember", "记住我的选择，不再提示"), dialog)
         dialog.setCheckBox(remember)
         dialog.exec()
         chosen = dialog.clickedButton()
@@ -1419,9 +1464,13 @@ class MainWindow(QMainWindow):
             self.showMinimized()
             return
         if self.downloader and self.downloader.isRunning():
-            answer = QMessageBox.question(self, "正在下载", "退出会中断当前下载。可最小化窗口继续下载。\n\n确定退出？",
-                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                          QMessageBox.StandardButton.No)
+            answer = QMessageBox.question(
+                self,
+                t("dialog_exit_confirm_title", "确认退出"),
+                t("dialog_downloading_exit_text", "当前有下载正在进行中，退出将取消当前任务。\n确定要退出吗？"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
