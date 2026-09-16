@@ -554,3 +554,37 @@ def test_new_modern_i18n_keys():
         set_language(lang)
         for key in ("hist_search_placeholder", "dl_recommended", "set_auto_saved", "dl_quality_title", "dl_audio_only"):
             assert t(key) != key
+
+
+def test_download_page_hero_input_and_quality_chips(make_window, media_info):
+    window = make_window()
+    window.show()
+    assert hasattr(window, "hero_box")
+    assert window.hero_box.objectName() == "HeroInput"
+    assert window.url_input.objectName() == "HeroUrlInput"
+    assert hasattr(window, "clear_btn")
+    assert not window.clear_btn.isVisible()
+
+    window.url_input.setText("https://www.youtube.com/watch?v=YE7VzlLtp-4")
+    assert window.clear_btn.isVisible()
+    window.clear_btn.click()
+    assert window.url_input.text() == ""
+    assert not window.clear_btn.isVisible()
+
+    window.ready = True
+    info = {"video_id": media_info["id"], "url": "https://youtu.be/YE7VzlLtp-4", "title": "<中文标题>",
+            "channel": "频道", "duration": 2, "thumbnail": None,
+            "options": [option.to_dict() for option in build_options(media_info)]}
+    window.show_video(info)
+    assert hasattr(window, "quality_chips")
+    assert len(window.quality_chips) == len(window.visible_options)
+    assert len(window.quality_chips) > 0
+    # Current selected row in table matches selected chip
+    current_row = window.formats.currentRow()
+    assert window.quality_chips[current_row].property("selected") == "true"
+    # Clicking another chip selects that row in formats
+    other_idx = (current_row + 1) % len(window.quality_chips)
+    window.quality_chips[other_idx].clicked.emit(other_idx)
+    assert window.formats.currentRow() == other_idx
+    assert window.quality_chips[other_idx].property("selected") == "true"
+

@@ -5,11 +5,11 @@ from pathlib import Path
 import subprocess
 import uuid
 
-from PySide6.QtCore import QSignalBlocker, Qt, QUrl
+from PySide6.QtCore import QSignalBlocker, Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QFont, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtWidgets import (
-    QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
+    QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QListView, QMainWindow, QMenu, QMessageBox, QProgressBar, QPushButton,
     QScrollArea, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
@@ -100,6 +100,54 @@ def codec_text(codec):
     return codec.split(".")[0]
 
 
+class QualityChipWidget(QFrame):
+    clicked = Signal(int)
+
+    def __init__(self, index: int, option: FormatOption, is_recommended: bool = False, parent=None):
+        super().__init__(parent)
+        self.index = index
+        self.setObjectName("QualityCard")
+        self.setProperty("selected", "false")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(74)
+
+        card_layout = QVBoxLayout(self)
+        card_layout.setContentsMargins(14, 10, 14, 10)
+        card_layout.setSpacing(4)
+
+        top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(8)
+
+        res_label = QLabel(option.label)
+        res_label.setObjectName("QualityRes")
+        top_row.addWidget(res_label)
+
+        if is_recommended:
+            badge = QLabel(t("dl_recommended", "推荐"))
+            badge.setObjectName("QualityBadge")
+            top_row.addWidget(badge)
+
+        top_row.addStretch()
+
+        size_str = size_text(option.estimated_bytes)
+        size_label = QLabel(size_str)
+        size_label.setObjectName("QualitySize")
+        top_row.addWidget(size_label)
+        card_layout.addLayout(top_row)
+
+        fps_str = f" · {option.fps:g}fps" if option.fps else ""
+        meta_str = f"{option.container.upper()} · {codec_text(option.video_codec)}{fps_str}"
+        meta_label = QLabel(meta_str)
+        meta_label.setObjectName("QualityMeta")
+        card_layout.addWidget(meta_label)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.index)
+        super().mousePressEvent(event)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, store: Store, start_diagnostics=True):
         super().__init__()
@@ -116,6 +164,7 @@ class MainWindow(QMainWindow):
         self.network = QNetworkAccessManager(self)
         self.thumbnail_reply = None
         self.ready = False
+        self.quality_chips = []
         self.last_downloaded_path = None
 
         # 初始化主题与语言（默认跟随系统）
@@ -273,33 +322,49 @@ class MainWindow(QMainWindow):
         layout = self.page(t("dl_heading", "把喜欢的视频，留在本地。"),
                            t("dl_subtitle", "粘贴 YouTube 或 Shorts 链接，选择清晰度，保留画面与声音。"), scroll=True)
 
-        # 集成式链接输入卡片
-        input_card = QFrame()
-        input_card.setObjectName("Card")
-        input_layout = QHBoxLayout(input_card)
-        input_layout.setContentsMargins(14, 12, 14, 12)
-        input_layout.setSpacing(10)
+        # 集成式 Hero 链接输入胶囊
+        self.hero_box = QFrame()
+        self.hero_box.setObjectName("HeroInput")
+        hero_layout = QHBoxLayout(self.hero_box)
+        hero_layout.setContentsMargins(14, 8, 10, 8)
+        hero_layout.setSpacing(8)
+
+        self.url_icon = label("🔗")
+        self.url_icon.setStyleSheet("font-size: 15px; color: #94A3B8; background: transparent;")
+        hero_layout.addWidget(self.url_icon)
 
         self.url_input = QLineEdit()
+        self.url_input.setObjectName("HeroUrlInput")
         self.url_input.setAccessibleName("YouTube 视频链接")
         self.url_input.setPlaceholderText(t("dl_url_placeholder", "https://www.youtube.com/watch?v=…"))
         self.url_input.returnPressed.connect(self.analyze)
         self.url_input.textEdited.connect(self.invalidate_video)
-        input_layout.addWidget(self.url_input, 1)
+        self.url_input.textChanged.connect(self._on_url_text_changed)
+        hero_layout.addWidget(self.url_input, 1)
 
-        input_layout.addWidget(button(t("dl_paste", "粘贴"), self.paste))
+        self.clear_btn = QPushButton("✕")
+        self.clear_btn.setObjectName("ClearButton")
+        self.clear_btn.setToolTip(t("dl_clear", "清空"))
+        self.clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.clear_btn.clicked.connect(self.clear_url)
+        self.clear_btn.hide()
+        hero_layout.addWidget(self.clear_btn)
+
+        self.paste_btn = button(t("dl_paste", "粘贴"), self.paste_smart)
+        hero_layout.addWidget(self.paste_btn)
+
         self.parse_button = button(t("dl_analyze", "解析视频"), self.analyze, "Primary")
-        input_layout.addWidget(self.parse_button)
-        layout.addWidget(input_card)
+        hero_layout.addWidget(self.parse_button)
+        layout.addWidget(self.hero_box)
 
         self.notice = label("", "Notice", True)
         self.notice.hide()
         layout.addWidget(self.notice)
 
         # 视频详情卡片
-        card = QFrame()
-        card.setObjectName("Card")
-        card_layout = QHBoxLayout(card)
+        self.video_card = QFrame()
+        self.video_card.setObjectName("Card")
+        card_layout = QHBoxLayout(self.video_card)
         card_layout.setContentsMargins(18, 16, 18, 16)
         card_layout.setSpacing(20)
 
@@ -316,10 +381,14 @@ class MainWindow(QMainWindow):
         details.addWidget(self.video_title)
         details.addWidget(self.video_meta)
         card_layout.addLayout(details, 1)
-        layout.addWidget(card)
+        layout.addWidget(self.video_card)
 
-        # 模式切换与提示栏
+        # 模式切换与画质选择栏
         modes = QHBoxLayout()
+        self.quality_title_label = label(t("dl_quality_title", "选择下载清晰度"), "Section")
+        modes.addWidget(self.quality_title_label)
+        modes.addSpacing(16)
+
         self.mode_group = QButtonGroup(self)
         for index, title in enumerate((t("dl_mode_quick", "快速下载"), t("dl_mode_hd", "高清下载"))):
             control = button(title, role="Mode")
@@ -332,7 +401,14 @@ class MainWindow(QMainWindow):
         modes.addWidget(label(t("dl_audio_note", "每个选项均包含音频"), "Muted"))
         layout.addLayout(modes)
 
-        # 格式列表（表格美化，圆角且行高舒适）
+        # 现代画质芯片网格容器
+        self.chips_widget = QWidget()
+        self.chips_layout = QGridLayout(self.chips_widget)
+        self.chips_layout.setContentsMargins(0, 0, 0, 0)
+        self.chips_layout.setSpacing(10)
+        layout.addWidget(self.chips_widget)
+
+        # 格式列表（表格美化，圆角且行高舒适；默认折叠以芯片卡片为主，保持底层测试与高级参数兼容）
         self.formats = QTableWidget(0, 4)
         self.formats.setHorizontalHeaderLabels([
             t("dl_th_res", "清晰度"),
@@ -349,7 +425,8 @@ class MainWindow(QMainWindow):
         self.formats.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.formats.itemSelectionChanged.connect(self.update_actions)
         self.formats.setMinimumHeight(130)
-        layout.addWidget(self.formats, 1)
+        self.formats.hide()
+        layout.addWidget(self.formats)
 
         self.format_hint = label(t("dl_hint_idle", "解析后显示源视频实际提供的清晰度。"), "Muted", True)
         layout.addWidget(self.format_hint)
@@ -718,15 +795,76 @@ class MainWindow(QMainWindow):
         self.update_actions()
         worker.deleteLater()
 
+    def _on_url_text_changed(self, text):
+        if hasattr(self, "clear_btn"):
+            self.clear_btn.setVisible(bool(text.strip()))
+
+    def clear_url(self):
+        self.url_input.clear()
+        self.invalidate_video()
+        if hasattr(self, "clear_btn"):
+            self.clear_btn.hide()
+
+    def paste_smart(self):
+        clipboard = QApplication.clipboard().text().strip()
+        if clipboard:
+            self.url_input.setText(clipboard)
+            if hasattr(self, "clear_btn"):
+                self.clear_btn.show()
+            if self.ready:
+                self.analyze()
+
+    def paste(self):
+        self.paste_smart()
+
+    def clear_quality_chips(self):
+        if hasattr(self, "quality_chips"):
+            for chip in self.quality_chips:
+                chip.deleteLater()
+            self.quality_chips = []
+
+    def rebuild_quality_chips(self):
+        self.clear_quality_chips()
+        if not hasattr(self, "chips_layout") or not self.visible_options:
+            return
+        recommended_idx = -1
+        for idx, opt in enumerate(self.visible_options):
+            if opt.resolution == (720 if self.quick else 1080) and opt.container == "mp4":
+                recommended_idx = idx
+                break
+        if recommended_idx == -1 and self.visible_options:
+            recommended_idx = 0
+
+        for idx, opt in enumerate(self.visible_options):
+            is_rec = (idx == recommended_idx)
+            chip = QualityChipWidget(idx, opt, is_recommended=is_rec)
+            chip.clicked.connect(self.on_chip_clicked)
+            row = idx // 2
+            col = idx % 2
+            self.chips_layout.addWidget(chip, row, col)
+            self.quality_chips.append(chip)
+        self.sync_chip_selection()
+
+    def on_chip_clicked(self, index: int):
+        if 0 <= index < len(self.visible_options):
+            self.formats.selectRow(index)
+            self.sync_chip_selection()
+            self.update_actions()
+
+    def sync_chip_selection(self):
+        cur = self.formats.currentRow()
+        for idx, chip in enumerate(getattr(self, "quality_chips", [])):
+            is_sel = (idx == cur)
+            chip.setProperty("selected", "true" if is_sel else "false")
+            chip.style().unpolish(chip)
+            chip.style().polish(chip)
+            chip.update()
+
     def invalidate_video(self):
         self.video = None
         self.formats.setRowCount(0)
+        self.clear_quality_chips()
         self.update_actions()
-
-    def paste(self):
-        from PySide6.QtWidgets import QApplication
-        self.url_input.setText(QApplication.clipboard().text().strip())
-        self.invalidate_video()
 
     def analyze(self):
         if self.inspection or not self.ready:
@@ -812,9 +950,11 @@ class MainWindow(QMainWindow):
                     item.setFont(font)
                 item.setToolTip(f"{option.width} × {option.height}\n视频：{option.video_codec}\n音频：{option.audio_codec}\n无损合并，不重新编码")
                 self.formats.setItem(row, column, item)
+        self.rebuild_quality_chips()
         if self.visible_options:
             target = next((index for index, item in enumerate(self.visible_options) if item.resolution == (720 if self.quick else 1080) and item.container == "mp4"), 0)
             self.formats.selectRow(target)
+            self.sync_chip_selection()
         self.format_hint.setText("大小为估计值，实际下载后可能不同。高分辨率 AV1 / VP9 文件需要播放器支持相应编码。" if options
                                  else "解析后显示源视频实际提供的清晰度。")
         if options and not self.visible_options:
@@ -822,9 +962,15 @@ class MainWindow(QMainWindow):
         self.update_actions()
 
     def update_actions(self):
+        self.sync_chip_selection()
         if not hasattr(self, "download_button"):
             return
-        self.download_button.setEnabled(self.ready and self.video is not None and self.formats.currentRow() >= 0 and self.downloader is None)
+        is_enabled = self.ready and self.video is not None and self.formats.currentRow() >= 0 and self.downloader is None
+        self.download_button.setEnabled(is_enabled)
+        if self.video is not None and self.formats.currentRow() >= 0:
+            self.download_button.setText(t("dl_btn_download_quality", "立即下载所选清晰度"))
+        else:
+            self.download_button.setText(t("dl_btn_download", "下载所选视频"))
 
     def start_download(self):
         if not self.ready or not self.video or self.downloader is not None:

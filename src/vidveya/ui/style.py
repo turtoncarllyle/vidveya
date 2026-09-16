@@ -476,6 +476,31 @@ QFrame#QualityCard[selected="true"] {{
     border: 2px solid {tokens['accent']};
     background: {tokens['accent_tint']};
 }}
+QLabel#QualityRes {{
+    font-size: 13px;
+    font-weight: bold;
+    color: {tokens['accent']};
+    background: transparent;
+}}
+QLabel#QualityMeta {{
+    font-size: 11px;
+    color: {tokens['text_muted']};
+    background: transparent;
+}}
+QLabel#QualitySize {{
+    font-size: 12px;
+    font-weight: 500;
+    color: {tokens['text_faint']};
+    background: transparent;
+}}
+QLabel#QualityBadge {{
+    background: {tokens['badge_green_bg']};
+    color: {tokens['badge_green_text']};
+    font-size: 10px;
+    font-weight: bold;
+    border-radius: 4px;
+    padding: 1px 6px;
+}}
 QPushButton#InlineAction {{
     border: none;
     background: transparent;
