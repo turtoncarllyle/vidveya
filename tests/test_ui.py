@@ -277,10 +277,8 @@ def test_combobox_view_and_container_properties(make_window):
         view = combo.view()
         assert isinstance(view, QListView)
         assert view.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        container = view.parentWidget()
-        if container:
-            assert bool(container.windowFlags() & Qt.WindowType.FramelessWindowHint)
-            assert container.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        assert view.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        assert view.uniformItemSizes() is True
 
 
 def test_local_datetime_formatting_no_utc():

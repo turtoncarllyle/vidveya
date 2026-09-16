@@ -13,3 +13,7 @@ __pycache__/
 .ruff_cache/
 .coverage
 *.log
+scratch/
+/*.png
+/*.db
+uv.lock

@@ -36,7 +36,7 @@ Choose light, dark, or system theme in **Settings → Appearance & Language**, o
 
 The sidebar shows the current download's progress even when viewing history or settings. Completed downloads have **Play Video** and **Open Folder** shortcuts; history also provides playback.
 
-### Download history (0.1.6)
+### Download history (0.1.7)
 
 - Click the Video, Resolution, Status, or Date column header to sort; click again to reverse the direction shown by the arrow. Resolutions sort numerically. Timestamps use your computer's local time zone, and selection stays on the same task after sorting or refreshing.
 - Right-click a record to play, open its folder, redownload, copy its URL or title, or delete it. Double-click to play an existing file or retry a finished task whose file is missing.

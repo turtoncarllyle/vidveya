@@ -1,3 +1,19 @@
+# v0.1.7
+
+## 中文
+
+- 优化下拉列表（QComboBox）弹出层显示与阴影效果，去除冗余滚动条，提升选项展开的流畅度与质感。
+- 复选框（QCheckBox）增加清晰的白色选中标记图标，显著改善在浅色与深色主题下的选中状态视觉辨识度。
+- 优化设置页“外观与偏好”卡片的排版布局，采用统一网格对齐，改善各控件之间的间距与视觉一致性。
+- Windows x64 安装包和便携包统一升级为 `0.1.7`。
+
+## English
+
+- Refine QComboBox dropdown popups with native shadow rendering and adaptive scrollbar policy, eliminating redundant scrollbars.
+- Add crisp white checkmark icons to checkboxes (QCheckBox) for clearer visual feedback in both light and dark themes.
+- Reorganize the "Appearance & Preferences" settings card with a clean grid layout for improved alignment and spacing.
+- Ship Windows x64 installer and portable packages as `0.1.7`.
+
 # v0.1.6
 
 ## 中文
