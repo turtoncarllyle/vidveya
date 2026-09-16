@@ -586,13 +586,13 @@ class MainWindow(QMainWindow):
         layout = self.page(t("set_heading", "设置"),
                            t("set_subtitle", "下载偏好与组件状态都保存在这台电脑上。"), scroll=True)
 
-        # 1. 外观与语言设置卡片
-        appearance_card = QFrame()
-        appearance_card.setObjectName("Card")
-        app_layout = QVBoxLayout(appearance_card)
-        app_layout.setContentsMargins(18, 16, 18, 16)
-        app_layout.setSpacing(12)
-        app_layout.addWidget(label(t("set_sec_appearance", "外观与语言"), "Subheading"))
+        # 1. 常规与偏好卡片 (General & Preferences)
+        pref_card = QFrame()
+        pref_card.setObjectName("Card")
+        pref_layout = QVBoxLayout(pref_card)
+        pref_layout.setContentsMargins(18, 16, 18, 16)
+        pref_layout.setSpacing(14)
+        pref_layout.addWidget(label(t("set_sec_appearance", "外观与偏好"), "Subheading"))
 
         app_row = QHBoxLayout()
         app_row.addWidget(label(t("set_theme_label", "界面主题") + "："))
@@ -619,54 +619,69 @@ class MainWindow(QMainWindow):
             self.language_input.setCurrentIndex(idx_lang)
         self.language_input.currentIndexChanged.connect(self.on_language_changed)
         app_row.addWidget(self.language_input, 1)
-        app_layout.addLayout(app_row)
-        layout.addWidget(appearance_card)
+        pref_layout.addLayout(app_row)
 
-        # 2. 保存位置卡片
-        dir_card = QFrame()
-        dir_card.setObjectName("Card")
-        dir_layout = QVBoxLayout(dir_card)
-        dir_layout.setContentsMargins(18, 16, 18, 16)
-        dir_layout.setSpacing(10)
-        dir_layout.addWidget(label(t("set_sec_storage", "保存位置"), "Subheading"))
+        close_row = QHBoxLayout()
+        close_row.addWidget(label(t("set_sec_window", "关闭窗口时") + "："))
+        self.close_action_input = combo_box("关闭窗口时的操作")
+        self.close_action_input.addItem(t("set_close_minimize", "最小化到任务栏（继续下载）"), "minimize")
+        self.close_action_input.addItem(t("set_close_exit", "退出软件"), "exit")
+        self.close_action_input.setCurrentIndex(1 if self.store.get_setting("close_action") == "exit" else 0)
+        self.close_action_input.currentIndexChanged.connect(lambda _: self.auto_save())
+        close_row.addWidget(self.close_action_input, 1)
 
-        row = QHBoxLayout()
+        close_row.addSpacing(20)
+        self.close_prompt_input = QCheckBox(t("set_close_prompt", "关闭时显示操作提示"))
+        self.close_prompt_input.setChecked(self.store.get_setting("confirm_close", True))
+        self.close_prompt_input.toggled.connect(lambda _: self.auto_save())
+        close_row.addWidget(self.close_prompt_input)
+        pref_layout.addLayout(close_row)
+
+        pref_layout.addWidget(label(t("set_close_note", "最小化后可从任务栏恢复窗口；可随时在设置中更改此行为。"), "Muted", True))
+        layout.addWidget(pref_card)
+
+        # 2. 存储与网络卡片 (Storage & Network)
+        storage_card = QFrame()
+        storage_card.setObjectName("Card")
+        storage_layout = QVBoxLayout(storage_card)
+        storage_layout.setContentsMargins(18, 16, 18, 16)
+        storage_layout.setSpacing(12)
+        storage_layout.addWidget(label(t("set_sec_storage", "存储与网络"), "Subheading"))
+
+        dir_row = QHBoxLayout()
+        dir_row.addWidget(label(t("dl_save_to", "保存至") + "："))
         self.directory_input = QLineEdit(self.directory())
         self.directory_input.setAccessibleName("下载保存位置")
-        row.addWidget(self.directory_input, 1)
-        row.addWidget(button(t("set_btn_choose_dir", "选择文件夹"), self.choose_directory))
-        dir_layout.addLayout(row)
-        layout.addWidget(dir_card)
+        self.directory_input.textChanged.connect(lambda _: self.auto_save())
+        dir_row.addWidget(self.directory_input, 1)
+        dir_row.addWidget(button(t("set_btn_choose_dir", "选择文件夹"), self.choose_directory))
+        storage_layout.addLayout(dir_row)
 
-        # 3. 代理设置卡片
-        proxy_card = QFrame()
-        proxy_card.setObjectName("Card")
-        proxy_layout = QVBoxLayout(proxy_card)
-        proxy_layout.setContentsMargins(18, 16, 18, 16)
-        proxy_layout.setSpacing(8)
-        proxy_layout.addWidget(label(t("set_sec_proxy", "代理地址（可选）"), "Subheading"))
+        proxy_row = QHBoxLayout()
+        proxy_row.addWidget(label(t("set_sec_proxy", "代理地址") + "："))
         self.proxy_input = QLineEdit(self.store.get_setting("proxy", ""))
         self.proxy_input.setAccessibleName("可选代理地址")
         self.proxy_input.setPlaceholderText(t("set_proxy_placeholder", "例如 http://127.0.0.1:7890；留空使用系统网络设置"))
-        proxy_layout.addWidget(self.proxy_input)
-        proxy_layout.addWidget(label(t("set_proxy_note", "浏览器中的代理扩展不会自动影响桌面助手。代理配置仅保存在本机。"), "Muted", True))
-        layout.addWidget(proxy_card)
+        self.proxy_input.editingFinished.connect(self.auto_save)
+        proxy_row.addWidget(self.proxy_input, 1)
+        storage_layout.addLayout(proxy_row)
+        storage_layout.addWidget(label(t("set_proxy_note", "浏览器中的代理扩展不会自动影响桌面助手。代理配置仅保存在本机。"), "Muted", True))
+        layout.addWidget(storage_card)
 
-        # 4. YouTube 登录态卡片（增加“如何导入 Cookie”入口）
-        auth_card = QFrame()
-        auth_card.setObjectName("Card")
-        auth_layout = QVBoxLayout(auth_card)
-        auth_layout.setContentsMargins(18, 16, 18, 16)
-        auth_layout.setSpacing(10)
+        # 3. 凭据与组件卡片 (Credentials & Diagnostics)
+        diag_card = QFrame()
+        diag_card.setObjectName("Card")
+        diag_layout = QVBoxLayout(diag_card)
+        diag_layout.setContentsMargins(18, 16, 18, 16)
+        diag_layout.setSpacing(12)
 
         auth_header = QHBoxLayout()
-        auth_header.addWidget(label(t("set_sec_auth", "YouTube 登录态"), "Subheading"))
+        auth_header.addWidget(label(t("set_sec_auth", "YouTube 登录态与组件"), "Subheading"))
         auth_header.addStretch()
-        # 显式的“如何导入 Cookie”入口按钮
         self.cookie_help_btn = button("📖 " + t("set_btn_cookie_help", "如何导入 Cookie？"), self.show_cookie_help)
         self.cookie_help_btn.setStyleSheet("border-radius: 6px; padding: 4px 10px; font-size: 13px; color: #E53935;")
         auth_header.addWidget(self.cookie_help_btn)
-        auth_layout.addLayout(auth_header)
+        diag_layout.addLayout(auth_header)
 
         auth_row = QHBoxLayout()
         self.auth_enabled = QCheckBox(t("set_auth_use", "使用已导入的登录态"))
@@ -676,56 +691,19 @@ class MainWindow(QMainWindow):
         auth_row.addStretch()
         auth_row.addWidget(button(t("set_btn_import", "导入 Cookie"), self.import_session))
         auth_row.addWidget(button(t("set_btn_clear", "清除"), self.clear_session))
-        auth_layout.addLayout(auth_row)
+        diag_layout.addLayout(auth_row)
 
         self.auth_notice = label(t("set_auth_notice_saved", "已加密保存登录态，仅此 Windows 用户可读取。") if vault_path().exists()
                                  else t("set_auth_notice_empty", "下载会员或私有视频时，请导入已有观看权限账号的 Netscape Cookie TXT。"), "Muted", True)
-        auth_layout.addWidget(self.auth_notice)
-        layout.addWidget(auth_card)
+        diag_layout.addWidget(self.auth_notice)
 
-        # 5. 关闭窗口与行为卡片
-        close_card = QFrame()
-        close_card.setObjectName("Card")
-        close_layout = QVBoxLayout(close_card)
-        close_layout.setContentsMargins(18, 16, 18, 16)
-        close_layout.setSpacing(10)
-        close_layout.addWidget(label(t("set_sec_window", "关闭窗口时"), "Subheading"))
-
-        close_row = QHBoxLayout()
-        self.close_action_input = combo_box("关闭窗口时的操作")
-        self.close_action_input.addItem(t("set_close_minimize", "最小化到任务栏（继续下载）"), "minimize")
-        self.close_action_input.addItem(t("set_close_exit", "退出软件"), "exit")
-        self.close_action_input.setCurrentIndex(1 if self.store.get_setting("close_action") == "exit" else 0)
-        close_row.addWidget(self.close_action_input, 1)
-
-        self.close_prompt_input = QCheckBox(t("set_close_prompt", "关闭时显示操作提示"))
-        self.close_prompt_input.setChecked(self.store.get_setting("confirm_close", True))
-        close_row.addWidget(self.close_prompt_input)
-        close_layout.addLayout(close_row)
-        close_layout.addWidget(label(t("set_close_note", "最小化后可从任务栏恢复窗口；左侧“退出软件”可直接退出。"), "Muted", True))
-        layout.addWidget(close_card)
-
-        # 保存设置操作行
-        save_row = QHBoxLayout()
-        save_row.addWidget(button(t("set_btn_save", "保存设置"), self.save_settings, "Primary"))
-        self.settings_notice = label("", "Muted", True)
-        save_row.addWidget(self.settings_notice, 1)
-        layout.addLayout(save_row)
-        layout.addSpacing(8)
-
-        # 6. 内置组件卡片
-        comp_card = QFrame()
-        comp_card.setObjectName("Card")
-        comp_layout = QVBoxLayout(comp_card)
-        comp_layout.setContentsMargins(18, 16, 18, 16)
-        comp_layout.setSpacing(10)
-
+        diag_layout.addSpacing(8)
         check_row = QHBoxLayout()
         check_row.addWidget(label(t("set_sec_components", "内置组件"), "Subheading"))
         check_row.addStretch()
         self.check_button = button(t("set_btn_recheck", "重新检查"), self.check_components)
         check_row.addWidget(self.check_button)
-        comp_layout.addLayout(check_row)
+        diag_layout.addLayout(check_row)
 
         self.component_table = QTableWidget(0, 2)
         self.component_table.setHorizontalHeaderLabels([t("set_comp_th_name", "组件"), t("set_comp_th_status", "状态 / 版本")])
@@ -735,10 +713,19 @@ class MainWindow(QMainWindow):
         self.component_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.component_table.setShowGrid(False)
         self.component_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.component_table.setMinimumHeight(210)
-        comp_layout.addWidget(self.component_table, 1)
-        comp_layout.addWidget(label(t("set_comp_note", "安装包已包含全部下载组件。更新应用时完整安装新版即可，下载文件和历史会保留。"), "Muted", True))
-        layout.addWidget(comp_card)
+        self.component_table.setMinimumHeight(180)
+        diag_layout.addWidget(self.component_table, 1)
+        diag_layout.addWidget(label(t("set_comp_note", "安装包已包含全部下载组件。更新应用时完整安装新版即可，下载文件和历史会保留。"), "Muted", True))
+        layout.addWidget(diag_card)
+
+        # 底部状态通知与后备保存按钮（支持即改即存与自动化测试兼容）
+        save_row = QHBoxLayout()
+        self.settings_notice = label(t("set_auto_saved", "设置已自动保存"), "Muted", True)
+        save_row.addWidget(self.settings_notice, 1)
+        self.save_button = button(t("set_btn_save", "保存设置"), self.save_settings, "Primary")
+        self.save_button.hide()
+        save_row.addWidget(self.save_button)
+        layout.addLayout(save_row)
 
     def on_theme_changed(self, index):
         theme = self.theme_input.itemData(index)
@@ -1523,6 +1510,28 @@ class MainWindow(QMainWindow):
         chosen = QFileDialog.getExistingDirectory(self, t("select_save_dir", "选择保存目录"), self.directory_input.text())
         if chosen:
             self.directory_input.setText(chosen)
+            self.auto_save()
+
+    def auto_save(self):
+        try:
+            proxy = validate_proxy(self.proxy_input.text()) if hasattr(self, "proxy_input") else ""
+            if hasattr(self, "directory_input") and self.directory_input.text().strip():
+                directory = Path(self.directory_input.text()).expanduser()
+                if directory.is_absolute():
+                    directory.mkdir(parents=True, exist_ok=True)
+                    self.store.set_setting("directory", str(directory.resolve()))
+            if hasattr(self, "proxy_input"):
+                self.store.set_setting("proxy", proxy)
+            if hasattr(self, "close_action_input") and self.close_action_input.currentData():
+                self.store.set_setting("close_action", self.close_action_input.currentData())
+            if hasattr(self, "close_prompt_input"):
+                self.store.set_setting("confirm_close", self.close_prompt_input.isChecked())
+            self.update_folder_label()
+            if hasattr(self, "settings_notice"):
+                self.settings_notice.setText(t("set_auto_saved", "设置已自动保存"))
+        except (UserError, OSError) as error:
+            if hasattr(self, "settings_notice"):
+                self.settings_notice.setText(str(error))
 
     def save_settings(self):
         try:

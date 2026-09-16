@@ -615,3 +615,17 @@ def test_history_search_filter_and_clean_ui(make_window):
     assert len(window.display_jobs) == 2
 
 
+def test_settings_auto_save_on_changes(make_window):
+    window = make_window()
+    window.show()
+    # Change close action
+    window.close_action_input.setCurrentIndex(window.close_action_input.findData("exit"))
+    assert window.store.get_setting("close_action") == "exit"
+    assert "自动保存" in window.settings_notice.text()
+
+    # Toggle confirm close
+    window.close_prompt_input.setChecked(False)
+    assert window.store.get_setting("confirm_close") is False
+
+
+
