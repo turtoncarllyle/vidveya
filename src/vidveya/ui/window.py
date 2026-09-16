@@ -40,21 +40,15 @@ def format_local_datetime(iso_str: str) -> str:
         return clean[:19]
 
 
-def combo_box(accessible_name=""):
+def combo_box(accessible_name="", scroll=False):
     box = QComboBox()
     view = QListView()
     view.setUniformItemSizes(True)
-    view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    view.setVerticalScrollBarPolicy(
+        Qt.ScrollBarPolicy.ScrollBarAsNeeded if scroll else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
     view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     box.setView(view)
-    container = view.parentWidget()
-    if container:
-        container.setWindowFlags(
-            Qt.WindowType.Popup
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.NoDropShadowWindowHint
-        )
-        container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
     if accessible_name:
         box.setAccessibleName(accessible_name)
     return box
@@ -594,8 +588,11 @@ class MainWindow(QMainWindow):
         pref_layout.setSpacing(14)
         pref_layout.addWidget(label(t("set_sec_appearance", "外观与偏好"), "Subheading"))
 
-        app_row = QHBoxLayout()
-        app_row.addWidget(label(t("set_theme_label", "界面主题") + "："))
+        pref_grid = QGridLayout()
+        pref_grid.setHorizontalSpacing(14)
+        pref_grid.setVerticalSpacing(12)
+
+        pref_grid.addWidget(label(t("set_theme_label", "界面主题") + "："), 0, 0)
         self.theme_input = combo_box("界面主题")
         self.theme_input.addItem(t("set_theme_system", "跟随操作系统"), "system")
         self.theme_input.addItem(t("set_theme_light", "浅色模式"), "light")
@@ -605,10 +602,9 @@ class MainWindow(QMainWindow):
         if idx >= 0:
             self.theme_input.setCurrentIndex(idx)
         self.theme_input.currentIndexChanged.connect(self.on_theme_changed)
-        app_row.addWidget(self.theme_input, 1)
+        pref_grid.addWidget(self.theme_input, 0, 1)
 
-        app_row.addSpacing(20)
-        app_row.addWidget(label(t("set_lang_label", "界面语言") + "："))
+        pref_grid.addWidget(label(t("set_lang_label", "界面语言") + "："), 0, 2)
         self.language_input = combo_box("界面语言")
         self.language_input.addItem(t("set_lang_system", "跟随操作系统"), "system")
         self.language_input.addItem(t("set_lang_zh", "简体中文"), "zh")
@@ -618,24 +614,24 @@ class MainWindow(QMainWindow):
         if idx_lang >= 0:
             self.language_input.setCurrentIndex(idx_lang)
         self.language_input.currentIndexChanged.connect(self.on_language_changed)
-        app_row.addWidget(self.language_input, 1)
-        pref_layout.addLayout(app_row)
+        pref_grid.addWidget(self.language_input, 0, 3)
 
-        close_row = QHBoxLayout()
-        close_row.addWidget(label(t("set_sec_window", "关闭窗口时") + "："))
+        pref_grid.addWidget(label(t("set_sec_window", "关闭窗口时") + "："), 1, 0)
         self.close_action_input = combo_box("关闭窗口时的操作")
         self.close_action_input.addItem(t("set_close_minimize", "最小化到任务栏（继续下载）"), "minimize")
         self.close_action_input.addItem(t("set_close_exit", "退出软件"), "exit")
         self.close_action_input.setCurrentIndex(1 if self.store.get_setting("close_action") == "exit" else 0)
         self.close_action_input.currentIndexChanged.connect(lambda _: self.auto_save())
-        close_row.addWidget(self.close_action_input, 1)
+        pref_grid.addWidget(self.close_action_input, 1, 1)
 
-        close_row.addSpacing(20)
         self.close_prompt_input = QCheckBox(t("set_close_prompt", "关闭时显示操作提示"))
         self.close_prompt_input.setChecked(self.store.get_setting("confirm_close", True))
         self.close_prompt_input.toggled.connect(lambda _: self.auto_save())
-        close_row.addWidget(self.close_prompt_input)
-        pref_layout.addLayout(close_row)
+        pref_grid.addWidget(self.close_prompt_input, 1, 2, 1, 2)
+
+        pref_grid.setColumnStretch(1, 1)
+        pref_grid.setColumnStretch(3, 1)
+        pref_layout.addLayout(pref_grid)
 
         pref_layout.addWidget(label(t("set_close_note", "最小化后可从任务栏恢复窗口；可随时在设置中更改此行为。"), "Muted", True))
         layout.addWidget(pref_card)

@@ -108,6 +108,8 @@ def get_theme_stylesheet(theme: str = "system") -> str:
     tokens = DARK_THEME if actual_theme == "dark" else LIGHT_THEME
     chevron_file = asset_path(f"chevron-down-{actual_theme}.svg")
     chevron_url = chevron_file.resolve().as_posix()
+    check_file = asset_path("check-white.svg")
+    check_url = check_file.resolve().as_posix()
     return f"""
 QMainWindow, QWidget#Workspace, QWidget#Page {{
     background: {tokens['bg_app']};
@@ -331,6 +333,10 @@ QComboBox::down-arrow {{
     image: url("{chevron_url}");
     width: 12px;
     height: 12px;
+}}
+QComboBox QFrame {{
+    border: none;
+    background: transparent;
 }}
 QComboBox QAbstractItemView {{
     outline: 0;
@@ -567,6 +573,16 @@ QCheckBox::indicator:hover {{
 QCheckBox::indicator:checked {{
     background: {tokens['accent']};
     border-color: {tokens['accent']};
+    image: url("{check_url}");
+}}
+QCheckBox::indicator:checked:hover {{
+    background: {tokens['accent_hover']};
+    border-color: {tokens['accent_hover']};
+    image: url("{check_url}");
+}}
+QCheckBox::indicator:disabled {{
+    border-color: {tokens['border']};
+    background: {tokens['bg_subtle']};
 }}
 """
 
