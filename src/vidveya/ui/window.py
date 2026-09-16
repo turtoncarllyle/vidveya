@@ -438,22 +438,18 @@ class MainWindow(QMainWindow):
         layout.addLayout(toolbar)
 
         self.history = QTableWidget(0, 4)
-        self.history.setHorizontalHeaderLabels([
-            t("hist_th_video", "视频"),
-            t("hist_th_res", "清晰度"),
-            t("hist_th_state", "状态"),
-            t("hist_th_date", "创建时间")
-        ])
         header = self.history.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for index in range(1, 4):
             header.setSectionResizeMode(index, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionsClickable(True)
         header.setSortIndicatorShown(True)
+        header.setCursor(Qt.CursorShape.PointingHandCursor)
         self.current_sort_column = 3
         self.current_sort_order = Qt.SortOrder.DescendingOrder
         header.setSortIndicator(self.current_sort_column, self.current_sort_order)
         header.sectionClicked.connect(self.on_header_section_clicked)
+        self._update_header_labels()
 
         self.history.verticalHeader().hide()
         self.history.verticalHeader().setDefaultSectionSize(46)
@@ -997,6 +993,28 @@ class MainWindow(QMainWindow):
         self.finish_unsuccessful("interrupted" if self.closing else "cancelled",
                                  "应用退出，任务已中断。" if self.closing else "下载已取消，可在下载记录中重新下载。")
 
+    def _update_header_labels(self):
+        if not hasattr(self, "history"):
+            return
+        base_titles = [
+            t("hist_th_video", "视频"),
+            t("hist_th_res", "清晰度"),
+            t("hist_th_state", "状态"),
+            t("hist_th_date", "创建时间"),
+        ]
+        col = getattr(self, "current_sort_column", 3)
+        order = getattr(self, "current_sort_order", Qt.SortOrder.DescendingOrder)
+        arrow = "▲" if order == Qt.SortOrder.AscendingOrder else "▼"
+
+        labels = []
+        for index, text in enumerate(base_titles):
+            if index == col:
+                labels.append(f"{text}  {arrow}")
+            else:
+                labels.append(text)
+
+        self.history.setHorizontalHeaderLabels(labels)
+
     def on_header_section_clicked(self, column: int):
         if getattr(self, "current_sort_column", None) == column:
             self.current_sort_order = (
@@ -1012,6 +1030,7 @@ class MainWindow(QMainWindow):
                 self.current_sort_order = Qt.SortOrder.AscendingOrder
 
         self.history.horizontalHeader().setSortIndicator(self.current_sort_column, self.current_sort_order)
+        self._update_header_labels()
         self._sync_sort_combo_from_header()
         self._render_history_table()
 
@@ -1048,6 +1067,7 @@ class MainWindow(QMainWindow):
 
         if hasattr(self, "history"):
             self.history.horizontalHeader().setSortIndicator(self.current_sort_column, self.current_sort_order)
+            self._update_header_labels()
         self._render_history_table()
 
     def _get_sorted_jobs(self):
@@ -1089,6 +1109,7 @@ class MainWindow(QMainWindow):
         self._render_history_table()
 
     def _render_history_table(self):
+        self._update_header_labels()
         selected = self.selected_job()
         selected_id = selected["id"] if selected else None
         # 刷新或排序后按任务 ID 恢复选择，避免同一行变成另一条记录。

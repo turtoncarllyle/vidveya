@@ -473,18 +473,25 @@ def test_history_header_clicks_sort_and_keep_selected_task(make_window, qtbot, c
     assert window.selected_job()["id"] == "c"
     assert window.sort_combo.isHidden()
     header = window.history.horizontalHeader()
+    assert header.sectionsClickable()
+    assert header.isSortIndicatorShown()
+    assert header.cursor().shape() == Qt.CursorShape.PointingHandCursor
     point = QPoint(header.sectionViewportPosition(column) + header.sectionSize(column) // 2,
                    header.height() // 2)
     qtbot.mouseClick(header.viewport(), Qt.MouseButton.LeftButton, pos=point)
     assert [job["id"] for job in window.display_jobs] == expected
     assert header.sortIndicatorSection() == column
     assert header.sortIndicatorOrder() == first_order
+    arrow = "▲" if first_order == Qt.SortOrder.AscendingOrder else "▼"
+    assert window.history.horizontalHeaderItem(column).text().endswith(arrow)
     assert window.selected_job()["id"] == "c"
     assert not window.delete_history_button.isEnabled()
 
     qtbot.mouseClick(header.viewport(), Qt.MouseButton.LeftButton, pos=point)
     assert [job["id"] for job in window.display_jobs] == list(reversed(expected))
     assert header.sortIndicatorOrder() != first_order
+    reversed_arrow = "▼" if first_order == Qt.SortOrder.AscendingOrder else "▲"
+    assert window.history.horizontalHeaderItem(column).text().endswith(reversed_arrow)
     assert window.selected_job()["id"] == "c"
     window.refresh_history()
     assert [job["id"] for job in window.display_jobs] == list(reversed(expected))
