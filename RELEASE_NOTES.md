@@ -1,3 +1,21 @@
+# v0.1.6
+
+## 中文
+
+- 下载页采用胶囊形搜索框（HeroInput）输入链接，质量选项改为芯片式按钮组（QualityChipWidget），操作更直观。
+- 下载记录支持实时搜索过滤，输入关键词即可在当前列表中快速定位，去除页面底部冗余按钮。
+- 设置页重组为三个聚合卡片（通用、外观与语言、YouTube 登录态），选项变更实时自动保存，无需手动点击"保存"。
+- 扩展中英文 i18n 翻译词条，覆盖新增 UI 控件的全部文案；新增界面现代化相关样式令牌（质量芯片、英雄输入框、操作按钮）。
+- Windows x64 安装包和便携包统一升级为 `0.1.6`。
+
+## English
+
+- Replace the download page URL field with a capsule HeroInput and quality selection with a QualityChipWidget chip group for a more intuitive interface.
+- Add live search filtering on the history page so users can instantly narrow records by keyword; remove redundant bottom buttons.
+- Reorganize Settings into three aggregated cards (General, Appearance & Language, YouTube Session) with auto-save so changes apply immediately without a manual save button.
+- Expand i18n tokens for both zh and en to cover all new UI controls; add style tokens for quality chips, hero inputs, and action buttons.
+- Ship Windows x64 installer and portable packages as `0.1.6`.
+
 # v0.1.5
 
 ## 中文
