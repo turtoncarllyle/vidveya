@@ -23,9 +23,9 @@ jobs:
       - run: python scripts/build.py
       - uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
-          draft: true
-          body_path: RELEASE_NOTES.md
+          name: VidVeya ${{ github.ref_name }}
+          draft: false
+          body_path: release/RELEASE_NOTES_CURRENT.md
           files: |
             release/VidVeya-*-win-x64-setup.exe
             release/VidVeya-*-win-x64-portable.zip

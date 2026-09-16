@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,13 @@ VERSION = "0.1.6"
 
 def run(*command):
     subprocess.run([str(item) for item in command], cwd=ROOT, check=True)
+
+
+def extract_current_release_notes(version: str) -> str:
+    content = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
+    pattern = rf"(?ms)^(#\s*v?{re.escape(version)}\b.*?)(?=^#\s*v|\Z)"
+    match = re.search(pattern, content)
+    return match.group(1).strip() if match else content
 
 
 def main():
@@ -67,6 +75,7 @@ def main():
             sha = hashlib.file_digest(stream, "sha256").hexdigest()
         checksums.append(f"{sha}  {path.name}")
     (release / "SHA256SUMS.txt").write_text("\n".join(checksums) + "\n", encoding="utf-8")
+    (release / "RELEASE_NOTES_CURRENT.md").write_text(extract_current_release_notes(VERSION) + "\n", encoding="utf-8")
     print("Release assets ready:", release, flush=True)
 
 
