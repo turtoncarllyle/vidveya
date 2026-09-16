@@ -3,7 +3,7 @@ import uuid
 
 import pytest
 from PySide6.QtCore import QPoint, QTimer, Qt
-from PySide6.QtWidgets import QMenu, QMessageBox
+from PySide6.QtWidgets import QListView, QMenu, QMessageBox
 
 from vidveya.formats import build_options
 from vidveya.store import Store, timestamp
@@ -262,11 +262,23 @@ def test_combobox_uses_qlistview(make_window):
         assert isinstance(combo.view(), QListView)
 
 
-def test_exit_button_ui_and_behavior(make_window):
+def test_no_exit_button_in_sidebar(make_window):
     window = make_window()
-    assert hasattr(window, "exit_button")
-    assert window.exit_button.objectName() == "ExitButton"
-    assert "⏻" in window.exit_button.text()
+    assert not hasattr(window, "exit_button")
+    assert hasattr(window, "request_exit")
+
+
+def test_combobox_view_and_container_properties(make_window):
+    from PySide6.QtCore import Qt
+    window = make_window()
+    for combo in (window.theme_input, window.language_input, window.close_action_input):
+        view = combo.view()
+        assert isinstance(view, QListView)
+        assert view.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        container = view.parentWidget()
+        if container:
+            assert bool(container.windowFlags() & Qt.WindowType.FramelessWindowHint)
+            assert container.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
 
 def test_local_datetime_formatting_no_utc():
@@ -496,3 +508,41 @@ def test_history_header_clicks_sort_and_keep_selected_task(make_window, qtbot, c
     window.refresh_history()
     assert [job["id"] for job in window.display_jobs] == list(reversed(expected))
     assert window.selected_job()["id"] == "c"
+
+
+def test_qt_translator_and_standard_dialog_buttons():
+    from PySide6.QtWidgets import QApplication, QMessageBox
+    from vidveya.i18n import install_qt_translator, set_language
+    app = QApplication.instance() or QApplication([])
+    
+    # Switch to zh
+    set_language("zh")
+    assert install_qt_translator(app, "zh") is True
+    box_zh = QMessageBox(QMessageBox.Icon.Question, "Title", "Msg", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    yes_btn = box_zh.button(QMessageBox.StandardButton.Yes)
+    no_btn = box_zh.button(QMessageBox.StandardButton.No)
+    assert yes_btn is not None and "是" in yes_btn.text()
+    assert no_btn is not None and "否" in no_btn.text()
+    
+    # Switch to en
+    set_language("en")
+    assert install_qt_translator(app, "en") is True
+    box_en = QMessageBox(QMessageBox.Icon.Question, "Title", "Msg", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    yes_btn_en = box_en.button(QMessageBox.StandardButton.Yes)
+    no_btn_en = box_en.button(QMessageBox.StandardButton.No)
+    assert yes_btn_en is not None and "Yes" in yes_btn_en.text()
+    assert no_btn_en is not None and "No" in no_btn_en.text()
+    
+    # Restore zh
+    set_language("zh")
+    install_qt_translator(app, "zh")
+
+
+def test_stylesheet_contains_modern_tokens():
+    from vidveya.ui.style import get_theme_stylesheet
+    for theme in ("light", "dark"):
+        qss = get_theme_stylesheet(theme)
+        assert "QualityCard" in qss
+        assert "HeroInput" in qss
+        assert "SearchInput" in qss
+        assert "InlineAction" in qss

@@ -6,6 +6,8 @@ if sys.platform == "win32":
 else:
     winreg = None
 
+from ..paths import asset_path
+
 
 LIGHT_THEME = {
     "bg_app": "#F8FAFC",
@@ -104,6 +106,8 @@ def resolve_theme(theme: str = "system") -> str:
 def get_theme_stylesheet(theme: str = "system") -> str:
     actual_theme = resolve_theme(theme)
     tokens = DARK_THEME if actual_theme == "dark" else LIGHT_THEME
+    chevron_file = asset_path(f"chevron-down-{actual_theme}.svg")
+    chevron_url = chevron_file.resolve().as_posix()
     return f"""
 QMainWindow, QWidget#Workspace, QWidget#Page {{
     background: {tokens['bg_app']};
@@ -248,26 +252,6 @@ QPushButton#Navigation:checked {{
     font-weight: 700;
     border-color: {tokens['accent_tint_border']};
 }}
-QPushButton#ExitButton {{
-    text-align: left;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    background: transparent;
-    color: {tokens['text_muted']};
-    padding: 9px 14px;
-    font-weight: 500;
-    font-size: 13px;
-}}
-QPushButton#ExitButton:hover {{
-    background: {tokens['danger_bg']};
-    color: {tokens['danger']};
-    border: 1px solid {tokens['danger_border']};
-    font-weight: 600;
-}}
-QPushButton#ExitButton:pressed {{
-    background: {tokens['danger_border']};
-    color: {tokens['danger']};
-}}
 QPushButton#Danger {{
     background: {tokens['danger']};
     color: #FFFFFF;
@@ -325,28 +309,41 @@ QComboBox {{
     color: {tokens['text_main']};
     border: 1px solid {tokens['border']};
     border-radius: 8px;
-    padding: 7px 12px;
+    padding: 7px 32px 7px 12px;
     min-height: 20px;
+    font-size: 13px;
 }}
 QComboBox:hover {{
     border-color: {tokens['border_strong']};
 }}
 QComboBox:focus {{
     border: 2px solid {tokens['border_focus']};
-    padding: 6px 11px;
+    padding: 6px 31px 6px 11px;
+}}
+QComboBox::drop-down {{
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 28px;
+    border: none;
+    background: transparent;
+}}
+QComboBox::down-arrow {{
+    image: url("{chevron_url}");
+    width: 12px;
+    height: 12px;
 }}
 QComboBox QAbstractItemView {{
     outline: 0;
     background: {tokens['bg_surface']};
     color: {tokens['text_main']};
-    border: 1px solid {tokens['border']};
+    border: 1px solid {tokens['border_strong']};
     border-radius: 8px;
     padding: 4px;
     selection-background-color: {tokens['accent_tint']};
     selection-color: {tokens['accent']};
 }}
 QComboBox QAbstractItemView::item {{
-    min-height: 32px;
+    min-height: 30px;
     padding: 4px 10px;
     border-radius: 6px;
     color: {tokens['text_main']};
@@ -433,6 +430,72 @@ QLabel#Notice {{
     color: {tokens['notice_text']};
     font-size: 13px;
     border: 1px solid {tokens['accent_tint_border']};
+}}
+QFrame#HeroInput {{
+    background: {tokens['bg_surface']};
+    border: 1px solid {tokens['border_strong']};
+    border-radius: 12px;
+}}
+QFrame#HeroInput:focus-within {{
+    border: 2px solid {tokens['accent']};
+}}
+QLineEdit#HeroUrlInput {{
+    background: transparent;
+    border: none;
+    padding: 10px 14px;
+    font-size: 14px;
+    color: {tokens['text_main']};
+}}
+QLineEdit#HeroUrlInput:focus {{
+    border: none;
+    padding: 10px 14px;
+}}
+QLineEdit#SearchInput {{
+    background: {tokens['bg_surface']};
+    border: 1px solid {tokens['border']};
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: {tokens['text_main']};
+}}
+QLineEdit#SearchInput:focus {{
+    border: 1.5px solid {tokens['accent']};
+    padding: 5.5px 11.5px;
+}}
+QFrame#QualityCard {{
+    background: {tokens['bg_surface']};
+    border: 1.5px solid {tokens['border']};
+    border-radius: 10px;
+    padding: 8px 12px;
+}}
+QFrame#QualityCard:hover {{
+    border-color: {tokens['border_strong']};
+    background: {tokens['bg_hover']};
+}}
+QFrame#QualityCard[selected="true"] {{
+    border: 2px solid {tokens['accent']};
+    background: {tokens['accent_tint']};
+}}
+QPushButton#InlineAction {{
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    padding: 4px 6px;
+    color: {tokens['text_muted']};
+}}
+QPushButton#InlineAction:hover {{
+    background: {tokens['bg_hover']};
+    color: {tokens['text_main']};
+}}
+QPushButton#ClearButton {{
+    border: none;
+    background: transparent;
+    color: {tokens['text_muted']};
+    font-size: 12px;
+    padding: 4px;
+}}
+QPushButton#ClearButton:hover {{
+    color: {tokens['text_main']};
 }}
 QScrollArea {{
     border: 0;
