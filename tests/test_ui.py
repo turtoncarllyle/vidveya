@@ -16,6 +16,8 @@ def make_window(qtbot, tmp_path, monkeypatch):
 
     def create():
         store = Store(tmp_path / "ui.db")
+        # 强制中文，避免 CI（英文系统 locale）导致断言失败
+        store.set_setting("language", "zh")
         window = MainWindow(store, start_diagnostics=False)
         # QtBot 的自动 close 会触发用户提示；此夹具统一走显式退出清理。
         windows.append(window)

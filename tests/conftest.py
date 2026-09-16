@@ -1,5 +1,7 @@
 import pytest
 
+from vidveya import i18n
+
 
 @pytest.fixture
 def media_info():
@@ -21,3 +23,13 @@ def media_info():
 @pytest.fixture(autouse=True)
 def isolated_data(tmp_path, monkeypatch):
     monkeypatch.setenv("VIDVEYA_DATA_DIR", str(tmp_path / "appdata"))
+
+
+@pytest.fixture(autouse=True)
+def force_zh_language():
+    """Force zh language for all tests so assertions on Chinese UI text pass
+    regardless of the OS locale (e.g. GitHub Actions Windows runner uses en)."""
+    original = i18n.get_current_language()
+    i18n._CURRENT_LANG = "zh"
+    yield
+    i18n._CURRENT_LANG = original
