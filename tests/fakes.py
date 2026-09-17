@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject, Signal
 class FakeWorker(QObject):
     event_received = Signal(dict)
     result_received = Signal(dict)
+    error_received = Signal(str)
     failure_received = Signal(dict)
     cancelled_signal = Signal()
     finished = Signal()

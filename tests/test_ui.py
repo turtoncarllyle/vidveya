@@ -1,10 +1,10 @@
 from unittest.mock import Mock
-import uuid
 
 import pytest
-from PySide6.QtCore import QPoint, QTimer, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QTimer, Qt
 from PySide6.QtWidgets import QListView, QMenu, QMessageBox
 
+from fakes import WorkerFactory
 from vidveya.formats import build_options
 from vidveya.store import Store, timestamp
 from vidveya.ui.window import MainWindow
@@ -13,34 +13,40 @@ from vidveya.ui.window import MainWindow
 @pytest.fixture
 def make_window(qtbot, tmp_path, monkeypatch):
     windows = []
+    monkeypatch.setattr('vidveya.ui.window.play_completion_sound', Mock())
 
     def create():
-        store = Store(tmp_path / "ui.db")
-        # 强制中文，避免 CI（英文系统 locale）导致断言失败
-        store.set_setting("language", "zh")
+        store = Store(tmp_path / 'ui.db')
+        store.set_setting('language', 'zh')
+        store.set_setting('directory', str(tmp_path / '下载视频'))
         window = MainWindow(store, start_diagnostics=False)
-        # QtBot 的自动 close 会触发用户提示；此夹具统一走显式退出清理。
+        window.downloads.worker_factory = WorkerFactory()
         windows.append(window)
         return window
 
     yield create
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(QMessageBox, 'question', lambda *args: QMessageBox.StandardButton.Yes)
     for window in reversed(windows):
         window.request_exit()
-        window.store.close()
+        for attempt in list(window.downloads.active.values()):
+            attempt.worker.finish()
+        qtbot.waitUntil(lambda: not window.downloads.active and not window.workers)
+        QCoreApplication.processEvents()
+        store = window.store
         window.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        store.close()
 
 
 def start_fake_download(window, tmp_path):
-    worker = Mock()
-    worker.isRunning.return_value = True
-    worker.wait.return_value = True
-    window.workers.append(worker)
-    window.downloader = worker
-    window.current_job = {"id": str(uuid.uuid4()), "created": timestamp(), "title": "中文视频",
-                          "state": "downloading", "directory": str(tmp_path),
-                          "option": {"resolution": 1080, "container": "mp4"}}
-    window.store.save_job(window.current_job)
+    window.ready = True
+    window.downloads.set_ready(True)
+    window.downloads.enqueue(
+        {'url': 'https://youtu.be/YE7VzlLtp-4', 'title': '中文视频'},
+        {'key': '1920x1080:30:mp4', 'resolution': 1080, 'container': 'mp4',
+         'width': 1920, 'height': 1080, 'fps': 30}, str(tmp_path))
+    worker = window.downloads.worker_factory.workers[-1]
+    worker.event_received.emit({'state': 'downloading', 'percent': 0})
     return worker
 
 
@@ -71,10 +77,10 @@ def test_format_modes_and_busy_state(make_window, media_info):
     assert window.download_button.isEnabled()
     window.change_mode(0)
     assert all(item.resolution <= 720 for item in window.visible_options)
-    window.downloader = object()
+    window.start_download()
     window.update_actions()
-    assert not window.download_button.isEnabled()
-    window.downloader = None
+    assert window.download_button.isEnabled()
+    assert len(window.downloads.active) == 1
     assert "需要播放器支持" in window.format_hint.text()
     assert "不重新编码" in window.formats.item(0, 0).toolTip()
 
@@ -89,7 +95,7 @@ def test_minimize_keeps_download_running(make_window, tmp_path, qtbot):
     assert not window.closing
     worker.cancel.assert_not_called()
     worker.wait.assert_not_called()
-    window.show_progress({"state": "merging", "percent": None})
+    worker.event_received.emit({"state": "merging", "percent": None})
     assert window.store.jobs()[0]["state"] == "merging"
 
 
@@ -140,23 +146,27 @@ def test_explicit_exit_bypasses_minimize_preference(make_window, monkeypatch):
     assert window.closing and not window.isVisible()
 
 
-def test_exit_confirms_and_interrupts_active_download(make_window, tmp_path, monkeypatch):
+def test_exit_confirms_and_interrupts_active_download(make_window, tmp_path, monkeypatch, qtbot):
     window = make_window()
-    window.store.set_setting("close_action", "exit")
-    window.store.set_setting("confirm_close", False)
+    window.store.set_setting('close_action', 'exit')
+    window.store.set_setting('confirm_close', False)
     worker = start_fake_download(window, tmp_path)
+    job_id = worker.request['job_id']
     window.show()
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No)
+    monkeypatch.setattr(QMessageBox, 'question', lambda *args: QMessageBox.StandardButton.No)
     assert not window.close()
     worker.cancel.assert_not_called()
-    assert window.current_job["state"] == "downloading"
+    assert window.downloads.get(job_id)['state'] == 'downloading'
     assert not window.closing
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
-    assert window.close()
+    monkeypatch.setattr(QMessageBox, 'question', lambda *args: QMessageBox.StandardButton.Yes)
+    assert not window.close()
     worker.cancel.assert_called_once()
-    worker.wait.assert_called_once()
-    assert window.store.jobs()[0]["state"] == "interrupted"
-    assert window.current_job is None
+    worker.wait.assert_not_called()
+    assert window.isVisible() and window.closing
+    worker.finish()
+    qtbot.waitUntil(lambda: not window.isVisible())
+    assert window.store.job(job_id)['state'] == 'interrupted'
+    assert not window.downloads.active
 
 
 def test_declining_exit_does_not_remember_or_force_future_exit(make_window, tmp_path, monkeypatch):
@@ -175,39 +185,45 @@ def test_declining_exit_does_not_remember_or_force_future_exit(make_window, tmp_
 
 def test_download_progress_shows_percentage_speed_and_eta(make_window, tmp_path):
     window = make_window()
-    start_fake_download(window, tmp_path)
-    window.show_progress({"state": "downloading", "percent": 47.5, "downloaded_bytes": 47.5 * 1024**2,
-                          "total_bytes": 100 * 1024**2, "speed": 3 * 1024**2, "eta": 17})
-    assert window.progress_value.text() == "47%"
-    assert window.progress_bar.value() == 47
-    assert window.progress_bar.maximum() == 100
-    assert "47.5 MB / 100.0 MB" in window.progress_meta.text()
-    assert "3.0 MB/s" in window.progress_meta.text()
-    assert "剩余 0:17" in window.progress_meta.text()
+    worker = start_fake_download(window, tmp_path)
+    card = window.task_list.cards[worker.request['job_id']]
+    worker.event_received.emit({'state': 'downloading', 'percent': 47.5, 'downloaded_bytes': 47.5 * 1024**2,
+                                'total_bytes': 100 * 1024**2, 'speed': 3 * 1024**2, 'eta': 17})
+    assert card.percent.text() == '47%'
+    assert card.progress_bar.value() == 47
+    assert card.progress_bar.maximum() == 100
+    assert '47.5 MB / 100.0 MB' in card.details.text()
+    assert '3.0 MB/s' in card.details.text()
+    assert '剩余 0:17' in card.details.text()
 
 
-@pytest.mark.parametrize("state, caption", [("downloading", "下载中"), ("merging", "合并中"), ("verifying", "校验中")])
+@pytest.mark.parametrize("state, caption", [("downloading", "正在下载"), ("merging", "正在合并"), ("verifying", "正在校验")])
 def test_unknown_percentage_displays_phase_without_fake_completion(make_window, tmp_path, state, caption):
     window = make_window()
-    start_fake_download(window, tmp_path)
-    window.show_progress({"state": "downloading", "percent": 75})
-    window.show_progress({"state": state, "percent": None, "downloaded_bytes": 1024**2})
-    assert window.progress_value.text() == caption
-    assert window.progress_bar.minimum() == window.progress_bar.maximum() == 0
-    if state == "downloading":
-        assert "总大小待确定" in window.progress_meta.text()
-        assert "1.0 MB" in window.progress_meta.text()
+    worker = start_fake_download(window, tmp_path)
+    card = window.task_list.cards[worker.request['job_id']]
+    worker.event_received.emit({'state': 'downloading', 'percent': 75})
+    worker.event_received.emit({'state': state, 'percent': None, 'downloaded_bytes': 1024**2})
+    assert caption in card.status.text()
+    assert not card.percent.text()
+    assert card.progress_bar.minimum() == card.progress_bar.maximum() == 0
+    if state == 'downloading':
+        assert '总大小待确定' in card.details.text()
+        assert '1.0 MB' in card.details.text()
 
 
 def test_progress_only_reaches_100_after_verified_result(make_window, tmp_path):
     window = make_window()
-    start_fake_download(window, tmp_path)
-    window.show_progress({"state": "downloading", "percent": 100})
-    assert window.progress_value.text() == "99%"
-    window.download_done({"path": str(tmp_path / "有声视频.mp4"), "verification": {"bytes": 1024}})
-    assert window.progress_value.text() == "100%"
-    assert window.progress_bar.value() == 100
-    assert window.store.jobs()[0]["state"] == "completed"
+    worker = start_fake_download(window, tmp_path)
+    card = window.task_list.cards[worker.request['job_id']]
+    worker.event_received.emit({'state': 'downloading', 'percent': 100})
+    assert card.percent.text() == '99%'
+    worker.result_received.emit({'path': str(tmp_path / '有声视频.mp4'), 'verification': {'bytes': 1024}})
+    assert card.percent.text() == '99%'
+    worker.finish()
+    assert card.percent.text() == '100%'
+    assert card.progress_bar.value() == 100
+    assert window.store.job(worker.request['job_id'])['state'] == 'completed'
 
 
 def test_theme_toggle_and_persistence(make_window):
@@ -235,11 +251,12 @@ def test_language_switch_and_i18n():
 def test_sidebar_mini_task_lifecycle(make_window, tmp_path):
     window = make_window()
     assert window.sidebar_mini_task.isHidden()
-    start_fake_download(window, tmp_path)
-    window.show_progress({"state": "downloading", "percent": 50})
+    worker = start_fake_download(window, tmp_path)
+    worker.event_received.emit({'state': 'downloading', 'percent': 50, 'speed': 2 * 1024**2})
     assert not window.sidebar_mini_task.isHidden()
-    assert window.mini_status.text() == "50%"
-    window.download_done({"path": str(tmp_path / "有声视频.mp4"), "verification": {"bytes": 1024}})
+    assert '1' in window.mini_title.text() and '2.0 MB/s' in window.mini_status.text()
+    assert window.mini_progress.value() == 50
+    worker.succeed({'path': str(tmp_path / '有声视频.mp4'), 'verification': {'bytes': 1024}})
     assert window.sidebar_mini_task.isHidden()
 
 
@@ -376,29 +393,36 @@ def test_history_delete_and_clear(make_window, monkeypatch):
 def test_history_actions_protect_an_ongoing_download(make_window, tmp_path, monkeypatch, action):
     window = make_window()
     worker = start_fake_download(window, tmp_path)
-    active_id = window.current_job["id"]
-    video = tmp_path / "已下载的视频.mp4"
-    video.write_bytes(b"keep downloaded media")
-    window.store.save_job({"id": "finished", "state": "completed", "created": timestamp(),
-                           "title": "已完成", "option": {}, "result": {"path": str(video)}})
+    active_id = worker.request['job_id']
+    video = tmp_path / '已下载的视频.mp4'
+    video.write_bytes(b'keep downloaded media')
+    window.store.save_job({'id': 'finished', 'state': 'completed', 'created': timestamp(),
+                           'title': '已完成', 'option': {}, 'result': {'path': str(video)}})
     window.refresh_history()
-    active_row = next(i for i, job in enumerate(window.display_jobs) if job["id"] == active_id)
+    active_row = next(i for i, job in enumerate(window.display_jobs) if job['id'] == active_id)
     window.history.selectRow(active_row)
-    assert not window.delete_history_button.isEnabled()
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    assert window.delete_history_button.isEnabled()
+    monkeypatch.setattr(QMessageBox, 'question', lambda *args: QMessageBox.StandardButton.Yes)
     getattr(window, action)()
 
-    assert active_id in {job["id"] for job in window.store.jobs()}
-    if action == "clear_all_history":
+    assert active_id in {job['id'] for job in window.store.jobs()}
+    if action == 'clear_all_history':
         assert len(window.store.jobs()) == 1
         assert not window.clear_history_button.isEnabled()
-    assert video.read_bytes() == b"keep downloaded media"
-    worker.cancel.assert_not_called()
-    window.show_progress({"state": "merging", "percent": None})
-    assert next(job for job in window.store.jobs() if job["id"] == active_id)["state"] == "merging"
-    window.download_done({"path": str(video), "verification": {"bytes": video.stat().st_size}})
-    assert next(job for job in window.store.jobs() if job["id"] == active_id)["state"] == "completed"
-    assert window.progress_bar.value() == 100
+        worker.cancel.assert_not_called()
+        worker.event_received.emit({'state': 'merging', 'percent': None})
+        assert window.store.job(active_id)['state'] == 'merging'
+    else:
+        worker.cancel.assert_called_once()
+        assert window.store.job(active_id)['delete_requested']
+    worker.succeed({'path': str(video), 'verification': {'bytes': video.stat().st_size}})
+    if action == 'clear_all_history':
+        assert window.store.job(active_id)['state'] == 'completed'
+        assert window.task_list.cards[active_id].progress_bar.value() == 100
+    else:
+        assert window.store.job(active_id) is None
+        assert active_id not in window.task_list.cards
+    assert video.read_bytes() == b'keep downloaded media'
 
 
 def test_context_menu_keeps_target_while_worker_refreshes_history(make_window, monkeypatch):
@@ -425,7 +449,7 @@ def test_context_menu_keeps_target_while_worker_refreshes_history(make_window, m
     assert [job["id"] for job in window.store.jobs()] == ["newer"]
 
 
-def test_active_history_context_menu_disables_deletion(make_window, tmp_path, monkeypatch):
+def test_active_history_context_menu_can_cancel_and_remove(make_window, tmp_path, monkeypatch):
     window = make_window()
     start_fake_download(window, tmp_path)
     window.refresh_history()
@@ -435,7 +459,7 @@ def test_active_history_context_menu_disables_deletion(make_window, tmp_path, mo
     monkeypatch.setattr("vidveya.ui.window.QMenu", lambda parent: menu)
     monkeypatch.setattr(menu, "exec", lambda pos: enabled.append(menu.actions()[-1].isEnabled()))
     window.show_history_context_menu(QPoint(1, 1))
-    assert enabled == [False]
+    assert enabled == [True]
 
 
 def test_history_selection_survives_sort_and_refresh(make_window, monkeypatch):
@@ -478,7 +502,7 @@ def test_history_header_clicks_sort_and_keep_selected_task(make_window, qtbot, c
                                "option": {"resolution": resolution, "container": "mp4"},
                                "created": f"2026-09-15T0{hour}:00:00+00:00"})
     window.refresh_history()
-    window.pages.setCurrentIndex(1)
+    window.show_history()
     window.show()
     qtbot.wait(50)
     window.history.selectRow(1)
@@ -497,7 +521,7 @@ def test_history_header_clicks_sort_and_keep_selected_task(make_window, qtbot, c
     arrow = "▲" if first_order == Qt.SortOrder.AscendingOrder else "▼"
     assert window.history.horizontalHeaderItem(column).text().endswith(arrow)
     assert window.selected_job()["id"] == "c"
-    assert not window.delete_history_button.isEnabled()
+    assert window.delete_history_button.isEnabled()
 
     qtbot.mouseClick(header.viewport(), Qt.MouseButton.LeftButton, pos=point)
     assert [job["id"] for job in window.display_jobs] == list(reversed(expected))
@@ -622,6 +646,7 @@ def test_history_search_filter_and_clean_ui(make_window):
     window.refresh_history()
     assert len(window.display_jobs) == 2
 
+    window.show_history()
     window.search_input.setText("python")
     assert len(window.display_jobs) == 1
     assert window.display_jobs[0]["id"] == "job1"
@@ -858,4 +883,225 @@ def test_clipboard_sniffing_dismissal_and_scope_guard(make_window, monkeypatch):
     paste_event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier)
     handled = window.eventFilter(window.url_input, paste_event)
     assert handled is False  # falls back to native QLineEdit paste
+
+
+def add_workbench_task(window, number=0, resolution=1080):
+    window.ready = True
+    info = {'title': f'中文视频 {number}', 'url': f'https://youtu.be/YE7VzlLtp-{number}'}
+    option = {'key': f'{resolution}:mp4', 'resolution': resolution, 'container': 'mp4',
+              'width': 1920, 'height': 1080, 'fps': 30}
+    window.start_job(info, option)
+    return next(job for job in window.downloads.jobs.values()
+                if job['url'].endswith(f'YE7VzlLtp-{number}') and job['option']['key'] == option['key'])
+
+
+def test_workbench_keeps_selected_tab_during_progress_and_duplicate_focus(make_window):
+    window = make_window()
+    job = add_workbench_task(window)
+    page = window.transfers_page
+    window.show_history()
+    window.history.selectRow(0)
+    window.show_tasks()
+    assert page.content_stack.currentIndex() == 0
+    window.downloads.worker_factory.workers[0].event_received.emit({'state': 'verifying', 'percent': None})
+    assert page.content_stack.currentIndex() == 0
+    window.show_history()
+    window.search_input.setText('unmatched')
+    window.start_job(job, job['option'])
+    assert len(window.downloads.jobs) == 1
+    assert page.content_stack.currentIndex() == 0
+    assert window.task_list.selected_id == job['id']
+    assert window.task_list.visible_ids == [job['id']]
+    assert not window.search_input.text()
+    window.view_transfers_btn.click()
+    assert page.content_stack.currentIndex() == 0
+
+
+def test_five_ui_tasks_have_three_workers_and_independent_slots(make_window):
+    window = make_window()
+    jobs = [add_workbench_task(window, i) for i in range(5)]
+    factory = window.downloads.worker_factory
+    assert len(factory.workers) == 3
+    assert [job['state'] for job in jobs] == ['starting'] * 3 + ['queued'] * 2
+    factory.workers[1].fail(retryable=False)
+    assert jobs[1]['state'] == 'failed' and jobs[3]['state'] == 'starting'
+    assert jobs[4]['state'] == 'queued' and len(factory.workers) == 4
+    window.task_list.cards[jobs[0]['id']].cancel_button.click()
+    factory.workers[0].cancel.assert_called_once()
+    factory.workers[2].cancel.assert_not_called()
+    factory.workers[0].finish()
+    assert jobs[4]['state'] == 'starting' and len(factory.workers) == 5
+
+
+def test_workbench_pause_and_resume_queue_buttons_dispatch_real_manager(make_window):
+    window = make_window()
+    jobs = [add_workbench_task(window, i) for i in range(5)]
+    page = window.transfers_page
+    factory = window.downloads.worker_factory
+    page.pause_all_btn.click()
+    assert window.downloads.paused and not page.resume_all_btn.isHidden()
+    assert page.pause_all_btn.isHidden() and not page.queue_notice.isHidden()
+    factory.workers[0].succeed({'path': 'verified.mp4', 'verification': {'bytes': 10}})
+    assert len(factory.workers) == 3 and jobs[3]['state'] == 'queued'
+    for worker in factory.workers:
+        worker.cancel.assert_not_called()
+    page.resume_all_btn.click()
+    assert not window.downloads.paused
+    assert len(factory.workers) == 4 and jobs[3]['state'] == 'starting'
+    assert page.resume_all_btn.isHidden() and page.queue_notice.isHidden()
+
+
+def test_failed_card_stays_visible_and_retry_focuses_new_task(make_window):
+    window = make_window()
+    job = add_workbench_task(window)
+    window.show()
+    window.show_tasks()
+    window.downloads.worker_factory.workers[0].fail(retryable=False)
+    page = window.transfers_page
+    assert page.content_stack.currentIndex() == 0 and page.task_scroll.isVisible()
+    card = window.task_list.cards[job['id']]
+    assert card.isVisible() and card.retry_button.isVisible()
+    card.retry_button.click()
+    assert len(window.downloads.jobs) == 2
+    assert window.task_list.selected_id != job['id']
+    assert window.downloads.get(window.task_list.selected_id)['attempts'] == 1
+    assert page.content_stack.currentIndex() == 0
+
+
+def test_filtered_task_keyboard_selection_ignores_hidden_cards(make_window):
+    window = make_window()
+    jobs = [add_workbench_task(window, i) for i in range(3)]
+    window.show_tasks()
+    window.search_input.setText('视频 2')
+    assert window.task_list.visible_ids == [jobs[2]['id']]
+    assert window.task_list.selected_id == jobs[2]['id']
+    window.task_list.move_selection(-1)
+    assert window.task_list.selected_id == jobs[2]['id']
+    window.search_input.setText('unmatched')
+    assert window.task_list.visible_ids == [] and window.task_list.selected_id is None
+    assert all(frame.isHidden() for frame, *_ in window.task_list.groups)
+
+
+def test_restart_shows_continue_queue_without_automatic_download(make_window, monkeypatch):
+    first = make_window()
+    first.downloads.pause_queue()
+    job = add_workbench_task(first)
+    monkeypatch.setattr(QMessageBox, 'question', lambda *args: QMessageBox.StandardButton.Yes)
+    first.request_exit()
+    reopened = make_window()
+    reopened.components_checked({'QA': {'ok': True, 'version': 'test component'}})
+    assert reopened.downloads.paused and not reopened.downloads.active
+    assert not reopened.transfers_page.resume_all_btn.isHidden()
+    reopened.transfers_page.resume_all_btn.click()
+    assert reopened.downloads.get(job['id'])['state'] == 'starting'
+
+
+def test_history_delete_shortcut_waits_for_worker_exit(make_window, qtbot, monkeypatch):
+    window = make_window()
+    job = add_workbench_task(window)
+    window.show()
+    window.show_history()
+    window.history.selectRow(0)
+    window.activateWindow()
+    qtbot.waitUntil(window.isActiveWindow)
+    window.history.setFocus()
+    qtbot.waitUntil(window.history.hasFocus)
+    monkeypatch.setattr(QMessageBox, 'question', lambda *args: QMessageBox.StandardButton.Yes)
+    assert not window.history_delete_shortcut.autoRepeat()
+    qtbot.keyClick(window.history, Qt.Key.Key_Delete)
+    assert window.store.job(job['id'])['delete_requested']
+    worker = window.downloads.worker_factory.workers[0]
+    worker.cancel.assert_called_once()
+    worker.finish()
+    assert window.store.job(job['id']) is None
+    assert job['id'] not in window.task_list.cards and window.history.rowCount() == 0
+
+
+@pytest.mark.parametrize('control', ['url_input', 'search_input'])
+def test_delete_in_text_input_never_removes_history(make_window, qtbot, monkeypatch, control):
+    window = make_window()
+    job = add_workbench_task(window)
+    window.show()
+    window.show_history()
+    window.history.selectRow(0)
+    if control == 'url_input':
+        window.show_page(window.NEW_PAGE)
+    widget = getattr(window, control)
+    widget.setText('中文视频')
+    widget.setFocus()
+    widget.setCursorPosition(0)
+    monkeypatch.setattr(QMessageBox, 'question', lambda *args: pytest.fail('输入框 Delete 不应删除任务'))
+    qtbot.keyClick(widget, Qt.Key.Key_Delete)
+    assert widget.text() == '文视频'
+    assert window.store.job(job['id']) is not None
+    assert not window.downloads.get(job['id'])['delete_requested']
+
+
+def test_task_card_has_no_delete_shortcut(make_window, qtbot, monkeypatch):
+    window = make_window()
+    job = add_workbench_task(window)
+    window.show()
+    window.show_tasks()
+    window.task_list.select(job['id'], focus=True)
+    monkeypatch.setattr(QMessageBox, 'question', lambda *args: pytest.fail('任务卡片不应绑定 Delete'))
+    qtbot.keyClick(window.task_list.cards[job['id']], Qt.Key.Key_Delete)
+    assert window.store.job(job['id']) and not job['delete_requested']
+
+
+def test_new_pasted_url_discards_previous_analysis_then_parses_latest(make_window, media_info, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+    window = make_window()
+    window.ready = True
+    factory = WorkerFactory()
+    monkeypatch.setattr('vidveya.ui.window.WorkerThread', factory)
+    original = 'https://www.youtube.com/watch?v=YE7VzlLtp-4'
+    latest = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+    window.url_input.setText(original)
+    window.analyze()
+    monkeypatch.setattr(QApplication.clipboard(), 'text', lambda: latest)
+    window.paste_smart()
+    info = {'title': '旧视频', 'channel': '频道', 'duration': 2, 'url': original,
+            'options': [option.to_dict() for option in build_options(media_info)]}
+    factory.workers[0].result_received.emit(info)
+    assert window.video is None and not window.download_button.isEnabled()
+    factory.workers[0].finish()
+    assert len(factory.workers) == 2 and factory.workers[1].request['url'] == latest
+    factory.workers[1].result_received.emit(info | {'url': latest, 'title': '新视频'})
+    factory.workers[1].finish()
+    assert window.video['title'] == '新视频' and window.download_button.isEnabled()
+
+
+def test_exit_waits_for_analysis_and_download_callbacks(make_window, monkeypatch, qtbot):
+    window = make_window()
+    job = add_workbench_task(window)
+    factory = WorkerFactory()
+    monkeypatch.setattr('vidveya.ui.window.WorkerThread', factory)
+    window.url_input.setText('https://youtu.be/YE7VzlLtp-4')
+    window.analyze()
+    window.show()
+    monkeypatch.setattr(QMessageBox, 'question', lambda *args: QMessageBox.StandardButton.Yes)
+    assert not window.request_exit()
+    factory.workers[0].cancel.assert_called_once()
+    factory.workers[0].wait.assert_not_called()
+    factory.workers[0].finish()
+    assert window.isVisible()
+    window.downloads.worker_factory.workers[0].finish()
+    qtbot.waitUntil(lambda: not window.isVisible())
+    assert window.store.job(job['id'])['state'] == 'interrupted'
+    assert not window.workers and not window.downloads.active
+
+
+def test_completion_notification_defaults_off_and_sound_waits_for_success(make_window, monkeypatch):
+    window = make_window()
+    job = add_workbench_task(window)
+    sound = Mock()
+    monkeypatch.setattr('vidveya.ui.window.play_completion_sound', sound)
+    worker = window.downloads.worker_factory.workers[0]
+    assert not window.completion_notifier.enabled
+    worker.event_received.emit({'state': 'verifying', 'percent': None})
+    sound.assert_not_called()
+    worker.succeed({'path': 'verified.mp4', 'verification': {'bytes': 10}})
+    assert window.store.job(job['id'])['state'] == 'completed'
+    sound.assert_called_once()
+    assert window.completion_notifier.pending == [] and window.completion_notifier.popup is None
 

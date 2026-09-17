@@ -1,18 +1,12 @@
-import os
-from pathlib import Path
-import subprocess
-
-from PySide6.QtCore import Qt, QPoint, Signal
-from PySide6.QtGui import QColor, QKeySequence, QShortcut
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QAbstractItemView, QApplication, QButtonGroup, QComboBox, QFrame, QHBoxLayout,
-    QHeaderView, QLabel, QLineEdit, QListView, QMenu, QMessageBox, QPushButton,
-    QScrollArea, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+    QAbstractItemView, QButtonGroup, QComboBox, QFrame, QHBoxLayout,
+    QHeaderView, QLabel, QLineEdit, QListView, QPushButton,
+    QScrollArea, QStackedWidget, QTableWidget, QVBoxLayout, QWidget
 )
 
 from ..i18n import t
-from ..models import ACTIVE_STATES
-from .formatting import duration_text, size_text
 from .task_list import TaskList
 
 
@@ -82,11 +76,13 @@ class TransfersPage(QWidget):
         self.btn_active = QPushButton(t("transfers_tab_active", "进行中") + " (0)")
         self.btn_active.setObjectName("SegmentBtn")
         self.btn_active.setCheckable(True)
+        self.btn_active.setMinimumWidth(110)
         self.btn_active.setChecked(True)
 
         self.btn_history = QPushButton(t("transfers_tab_history", "已完成") + " (0)")
         self.btn_history.setObjectName("SegmentBtn")
         self.btn_history.setCheckable(True)
+        self.btn_history.setMinimumWidth(110)
 
         self.seg_group = QButtonGroup(self)
         self.seg_group.setExclusive(True)
@@ -103,10 +99,8 @@ class TransfersPage(QWidget):
         self.search_input.setObjectName("SearchInput")
         self.search_input.setPlaceholderText(t("transfers_search_placeholder", "搜索任务或视频标题…"))
         self.search_input.setClearButtonEnabled(True)
-        self.search_input.setMinimumWidth(260)
+        self.search_input.setMinimumWidth(160)
         self.search_input.textChanged.connect(self._on_search_changed)
-        toolbar.addWidget(self.search_input)
-
         toolbar.addStretch()
 
         # 批量操作栏（根据当前选中的分段展示）
@@ -120,6 +114,7 @@ class TransfersPage(QWidget):
         self.resume_all_btn = button(t("transfers_resume_all", "全部继续"), self._resume_all)
         self.resume_all_btn.hide()
         self.pause_all_btn = button(t("transfers_pause_all", "全部暂停"), self._pause_all)
+        self.pause_all_btn.setToolTip(t("transfers_pause_hint"))
         act_layout.addWidget(self.resume_all_btn)
         act_layout.addWidget(self.pause_all_btn)
         self.actions_stack.addWidget(active_actions)
@@ -136,6 +131,11 @@ class TransfersPage(QWidget):
 
         toolbar.addWidget(self.actions_stack)
         root_layout.addLayout(toolbar)
+        root_layout.addWidget(self.search_input)
+
+        self.queue_notice = label(t("transfers_paused_hint"), "Status", True)
+        self.queue_notice.hide()
+        root_layout.addWidget(self.queue_notice)
 
         # 3. 核心内容区域 (QStackedWidget)
         self.content_stack = QStackedWidget()
@@ -179,6 +179,8 @@ class TransfersPage(QWidget):
         history_layout = QVBoxLayout(history_page)
         history_layout.setContentsMargins(0, 0, 0, 0)
         history_layout.setSpacing(10)
+        self.history_count_label = label('', 'Muted')
+        history_layout.addWidget(self.history_count_label)
 
         # 隐藏的 sort_combo 供向下兼容
         self.sort_combo = combo_box("排序方式")
@@ -253,6 +255,7 @@ class TransfersPage(QWidget):
             return
         self.content_stack.setCurrentIndex(tab_id)
         self.actions_stack.setCurrentIndex(tab_id)
+        self.queue_notice.setVisible(tab_id == 0 and self.window.downloads.paused)
         self._on_search_changed(self.search_input.text())
 
     def _on_search_changed(self, text: str):
@@ -276,14 +279,24 @@ class TransfersPage(QWidget):
     def update_badges(self, active_count: int, history_count: int):
         self.btn_active.setText(f"{t('transfers_tab_active', '进行中')}  {active_count}")
         self.btn_history.setText(f"{t('transfers_tab_history', '已完成')}  {history_count}")
-        self.active_empty.setVisible(active_count == 0)
-        self.task_scroll.setVisible(active_count > 0)
+        has_tasks = bool(self.task_list.cards)
+        self.active_empty.setVisible(not has_tasks)
+        self.task_scroll.setVisible(has_tasks)
+
+    def update_queue_controls(self):
+        manager = self.window.downloads
+        self.resume_all_btn.setVisible(manager.paused)
+        self.resume_all_btn.setEnabled(self.window.ready and not manager.closing)
+        self.pause_all_btn.setVisible(not manager.paused)
+        summary = manager.summary()
+        self.pause_all_btn.setEnabled(bool(summary["running"] or summary["waiting"]) and not manager.closing)
+        self.queue_notice.setVisible(manager.paused and self.content_stack.currentIndex() == 0)
 
     def _pause_all(self):
-        self.window.downloads.pause()
+        self.window.downloads.pause_queue()
 
     def _resume_all(self):
-        self.window.downloads.resume()
+        self.window.downloads.resume_queue()
 
     def _clear_history(self):
         self.window.clear_all_history()

@@ -181,6 +181,13 @@ class DownloadManager(QObject):
         self.summary_changed.emit()
         self._pump()
 
+    def pause_queue(self):
+        """Stop dispatching new attempts; running downloads still finish normally."""
+        if self.closing:
+            return
+        self.paused = True
+        self.summary_changed.emit()
+
     def resume_queue(self):
         if self.closing:
             return

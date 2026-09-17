@@ -18,9 +18,9 @@ Both packages include Qt, yt-dlp, yt-dlp-ejs, FFmpeg, ffprobe, and Deno. The app
 ## Usage
 
 1. Open VidVeya.
-2. Paste a `watch`, `youtu.be`, or `shorts` URL and choose **Analyze video**.
+2. Use **Paste** or Ctrl+V with a `watch`, `youtu.be`, or `shorts` URL to analyze it automatically. For a typed URL, choose **Analyze video**.
 3. Use **Quick download** for 720p and below, or **HD download** for available 1080p, 2K, 4K, and 8K formats.
-4. Choose **Add Download Task**, then add another video or open **Download Tasks** to track progress.
+4. Choose **Add Download Task**, then add another video or open **Transfers → Tasks** to track progress. Switch to **History** in the same workbench to search, sort, and manage records.
 
 Quality cards show actual pixel dimensions, frame rate, format/codec, and estimated size, for example `1080P · 1920×1080 · 30 FPS`. Portrait dimensions retain their orientation, such as `1080×1920`. The `≈` marker indicates the estimated combined video/audio size; unavailable estimates show “Size TBD”.
 
@@ -28,14 +28,15 @@ The download card shows a progress bar, percentage, transferred/total size, spee
 
 Every option must have audio. Separate streams are merged automatically, then the result is checked for video, audio, selected resolution, and duration. A missing audio track or failed verification always fails the job; a silent source remains silent.
 
-A system sound plays once after a download passes verification, including while minimized. Disable **Play a sound when a download completes** under **Settings → Completion alerts** to turn it off; the preference saves automatically. Failed or cancelled downloads do not play the success sound. Playback follows Windows sound and volume settings.
+A system sound plays once after a download passes verification, including while minimized. Disable **Play a sound when a download completes** under **Settings → Download Tasks → Completion alerts** to turn it off; the preference saves automatically. Failed or cancelled downloads do not play the success sound. Playback follows Windows sound and volume settings.
 
-**Show a desktop notification when a download completes** is **off by default** and can be configured separately from sound. When enabled, a notification at the bottom right shows the video title and quality after verification, even while minimized. Each video has **Open file** and **Open Folder** buttons to launch the default player or select the file in Explorer. **View tasks** returns to Download Tasks. It dismisses after about 8 seconds without taking focus. Completions within one second share a notification showing up to 3 videos, with remaining results available on the task page.
+**Show a desktop notification when a download completes** is **off by default** and can be configured separately from sound. When enabled, a notification at the bottom right shows the video title and quality after verification, even while minimized. Each video has **Open file** and **Open Folder** buttons to launch the default player or select the file in Explorer. **View tasks** returns to Download Tasks. It sits at the bottom right of the current screen’s work area, above the taskbar, and dismisses after about 8 seconds without taking focus. Hovering keeps it open; moving away allows another 4 seconds. Completions within one second share a notification showing up to 3 videos, with remaining results available on the task page.
 
 ### Multiple downloads and automatic retries (0.1.8)
 
 - Run **3 tasks** concurrently by default; additional tasks wait in FIFO order. Settings allow **1–5** concurrent tasks. Increasing the limit fills free slots immediately; lowering it lets existing tasks finish. Analyzing another URL does not interrupt downloads.
-- Download Tasks groups running tasks, waiting tasks, and the latest 3 results, with independent progress, speed, time remaining, merging, and verification. Older results remain in History. Adding the same unfinished video, format, and directory selects the existing task instead of creating a duplicate.
+- **Transfers** brings tasks and history into one workbench with searchable tabs. **Pause Queue** stops starting new tasks while running downloads, merging, and verification continue. **Resume Queue** starts waiting tasks again.
+- The Tasks tab groups running tasks, waiting tasks, and the latest 3 results, including failed or interrupted tasks, with independent progress, speed, time remaining, merging, and verification. Older results remain in History. Adding the same unfinished video, format, and directory selects the existing task instead of creating a duplicate.
 - The default is **3 extra retries**, or at most **4 attempts**. Set **0–10** extra retries; 0 disables task-level automatic retries. Changes apply to newly added tasks and new tasks created by manual retry.
 - Timeouts, interrupted connections, temporary network failures, and HTTP 408/429/5xx can retry after **10, 30, then 60 seconds**; later waits remain 60 seconds. HTTP 429 waits at least 60 seconds and honors a longer server delay. Waiting retries release their concurrency slot and join the queue tail when due.
 - Permission, cookie, format, disk, component, and media validation failures require manual retry after resolving the cause. Automatic retries update the same record; manual retries create a new task. Each attempt resolves fresh media URLs for the original quality and destination. yt-dlp request/fragment retries remain separate from this setting.
@@ -135,6 +136,8 @@ Build outputs are written to `release/`: installer, portable ZIP, and SHA-256 ch
 ```powershell
 .\.venv\Scripts\python.exe scripts\live_check.py --resolution 360
 ```
+
+Pushing a `v*.*.*` tag builds both packages and creates a draft Release through GitHub Actions. After checking the version, installer/portable behavior, and SHA-256 values, publish with `gh release edit <tag> --draft=false --latest --repo turtoncarllyle/vidveya`.
 
 ## Sources and licenses
 

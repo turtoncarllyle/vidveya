@@ -27,56 +27,37 @@ class Store:
         self.connection.commit()
 
     def save_job(self, job: dict):
-        try:
-            self.connection.execute("INSERT OR REPLACE INTO jobs VALUES (?, ?, ?)",
-                                    (job["id"], job["created"], json.dumps(job, ensure_ascii=False)))
-            self.connection.commit()
-        except sqlite3.ProgrammingError:
-            pass
+        self.connection.execute("INSERT OR REPLACE INTO jobs VALUES (?, ?, ?)",
+                                (job["id"], job["created"], json.dumps(job, ensure_ascii=False)))
+        self.connection.commit()
 
     def jobs(self, limit: int = 500) -> list[dict]:
-        try:
-            rows = self.connection.execute("SELECT data FROM jobs ORDER BY created DESC, rowid DESC LIMIT ?", (limit,))
-            return [json.loads(row[0]) for row in rows]
-        except sqlite3.ProgrammingError:
-            return []
+        rows = self.connection.execute("SELECT data FROM jobs ORDER BY created DESC, rowid DESC LIMIT ?", (limit,))
+        return [json.loads(row[0]) for row in rows]
 
     def job_count(self) -> int:
-        try:
-            return self.connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
-        except sqlite3.ProgrammingError:
-            return 0
+        return self.connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
 
     def has_finished_jobs(self) -> bool:
-        try:
-            states = sorted(ACTIVE_STATES)
-            placeholders = ",".join("?" for _ in states)
-            return bool(self.connection.execute(
-                f"SELECT EXISTS(SELECT 1 FROM jobs WHERE json_extract(data, '$.state') NOT IN ({placeholders}))",
-                states,
-            ).fetchone()[0])
-        except sqlite3.ProgrammingError:
-            return False
+        states = sorted(ACTIVE_STATES)
+        placeholders = ",".join("?" for _ in states)
+        return bool(self.connection.execute(
+            f"SELECT EXISTS(SELECT 1 FROM jobs WHERE json_extract(data, '$.state') NOT IN ({placeholders}))",
+            states,
+        ).fetchone()[0])
 
     def job(self, job_id: str) -> dict | None:
-        try:
-            row = self.connection.execute("SELECT data FROM jobs WHERE id=?", (job_id,)).fetchone()
-            return json.loads(row[0]) if row else None
-        except sqlite3.ProgrammingError:
-            return None
+        row = self.connection.execute("SELECT data FROM jobs WHERE id=?", (job_id,)).fetchone()
+        return json.loads(row[0]) if row else None
 
     def pending_jobs(self) -> list[dict]:
-        try:
-            states = sorted(ACTIVE_STATES)
-            placeholders = ",".join("?" for _ in states)
-            rows = self.connection.execute(
-                f"SELECT data FROM jobs WHERE json_extract(data, '$.state') IN ({placeholders}) "
-                "ORDER BY created ASC, rowid ASC",
-                states,
-            )
-            return [json.loads(row[0]) for row in rows]
-        except sqlite3.ProgrammingError:
-            return []
+        states = sorted(ACTIVE_STATES)
+        placeholders = ",".join("?" for _ in states)
+        rows = self.connection.execute(
+            f"SELECT data FROM jobs WHERE json_extract(data, '$.state') IN ({placeholders}) "
+            "OR json_extract(data, '$.delete_requested') = 1 ORDER BY created, rowid", states,
+        )
+        return [json.loads(row[0]) for row in rows]
 
     def recover(self):
         # Only the single desktop instance may call recovery.

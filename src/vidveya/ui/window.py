@@ -5,7 +5,7 @@ import subprocess
 import time
 
 from PySide6.QtCore import QEvent, QSignalBlocker, QTimer, Qt, QUrl, Signal
-from PySide6.QtGui import QColor, QFont, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QColor, QFont, QKeySequence, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView,
@@ -24,7 +24,6 @@ from ..tasks import DownloadManager, bounded_int
 from ..urls import normalize_url, validate_proxy
 from .formatting import codec_text, duration_text, size_text
 from .notifications import CompletionNotifier, play_completion_sound
-from .task_list import TaskList
 from .transfers_page import TransfersPage
 from .style import get_theme_stylesheet, resolve_theme
 
@@ -131,8 +130,6 @@ class QualityChipWidget(QFrame):
 
 class MainWindow(QMainWindow):
     NEW_PAGE, TRANSFERS_PAGE, SETTINGS_PAGE = range(3)
-    TASKS_PAGE = 1
-    HISTORY_PAGE = 1
 
     @staticmethod
     def combo_box(accessible_name="", scroll=False):
@@ -143,6 +140,8 @@ class MainWindow(QMainWindow):
         self.store = store
         self.workers = []
         self.inspection = None
+        self._analysis_url = None
+        self._pending_analysis = False
         self.downloads = DownloadManager(store, self)
         self._history_states = {}
         self._last_sound_at = float('-inf')
@@ -155,7 +154,6 @@ class MainWindow(QMainWindow):
         self.thumbnail_reply = None
         self.ready = False
         self.quality_chips = []
-        self.last_downloaded_path = None
         self._dismissed_clipboard = None
         self._sniffed_text = "" 
 
@@ -163,19 +161,6 @@ class MainWindow(QMainWindow):
         self.current_theme_setting = self.store.get_setting("theme", "system")
         self.current_lang_setting = self.store.get_setting("language", "system")
         set_language(self.current_lang_setting)
-
-        self.downloader = None
-        self.current_job = None
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_value = label("", "ProgressValue")
-        self.progress_title = label("", "Subheading")
-        self.progress_meta = label("", "Muted")
-        self.step_indicator = label("", "Eyebrow")
-        self.done_actions_widget = QWidget()
-        self.cancel_button = button(t("dl_btn_cancel", "取消下载"))
-        self.play_button = button(t("dl_btn_play", "播放视频"))
-        self.open_dir_button = button(t("dl_btn_open_dir", "打开文件夹"))
 
         self.completion_notifier = CompletionNotifier(self, self.store.get_setting("completion_notification", False))
         self.completion_notifier.activated.connect(self.show_completed_tasks)
@@ -284,7 +269,7 @@ class MainWindow(QMainWindow):
         mini_layout.addWidget(self.mini_title)
         mini_layout.addWidget(self.mini_progress)
         mini_layout.addWidget(self.mini_status)
-        self.sidebar_mini_task.mousePressEvent = lambda e: self.show_page(self.TRANSFERS_PAGE)
+        self.sidebar_mini_task.mousePressEvent = lambda e: self.show_tasks()
         self.sidebar_mini_task.hide()
         side_layout.addWidget(self.sidebar_mini_task)
 
@@ -320,6 +305,7 @@ class MainWindow(QMainWindow):
         self.task_list = self.transfers_page.task_list
         self.history = self.transfers_page.history
         self.history_detail = self.transfers_page.history_detail
+        self.history_count_label = self.transfers_page.history_count_label
         self.sort_combo = self.transfers_page.sort_combo
         self.search_input = self.transfers_page.search_input
         self.clear_history_button = self.transfers_page.clear_history_button
@@ -380,7 +366,6 @@ class MainWindow(QMainWindow):
         self.url_input.setAccessibleName("YouTube 视频链接")
         self.url_input.setPlaceholderText(t("dl_url_placeholder", "https://www.youtube.com/watch?v=…"))
         self.url_input.returnPressed.connect(self.analyze)
-        self.url_input.textEdited.connect(self.invalidate_video)
         self.url_input.textChanged.connect(self._on_url_text_changed)
         self.url_input.installEventFilter(self)
         hero_layout.addWidget(self.url_input, 1)
@@ -412,11 +397,9 @@ class MainWindow(QMainWindow):
         added_layout.setContentsMargins(18, 12, 18, 12)
         added_layout.setSpacing(14)
 
-        self.added_banner_label = label("✓  " + t("dl_added_banner", "任务已加入下载队列"), "Subheading")
+        self.added_banner_label = label("✓  " + t("dl_added_banner", "任务已加入下载队列"), "Subheading", True)
         self.added_banner_label.setObjectName("AddedBannerLabel")
-        added_layout.addWidget(self.added_banner_label)
-
-        added_layout.addStretch()
+        added_layout.addWidget(self.added_banner_label, 1)
 
         self.view_transfers_btn = button(t("dl_view_transfers", "查看传输列表 ➔"), self.go_to_transfers)
         added_layout.addWidget(self.view_transfers_btn)
@@ -530,16 +513,6 @@ class MainWindow(QMainWindow):
         self.format_hint.hide()
         layout.addWidget(self.format_hint)
 
-        self.added_actions = QWidget()
-        added_row = QHBoxLayout(self.added_actions)
-        added_row.setContentsMargins(0, 0, 0, 0)
-        self.added_notice = label("", "Status", True)
-        added_row.addWidget(self.added_notice, 1)
-        added_row.addWidget(button(t("task_add_next"), self.continue_adding))
-        added_row.addWidget(button(t("task_view"), lambda: self.show_page(self.TASKS_PAGE)))
-        self.added_actions.hide()
-        layout.addWidget(self.added_actions)
-
         # 底部操作栏
         footer = QHBoxLayout()
         self.folder_label = label("", "Status")
@@ -552,21 +525,18 @@ class MainWindow(QMainWindow):
         layout.addLayout(footer)
 
     def show_page(self, index):
-        if index in (self.TASKS_PAGE, self.HISTORY_PAGE):
-            self.pages.setCurrentIndex(self.TRANSFERS_PAGE)
-            if hasattr(self, "transfers_page"):
-                if index == self.HISTORY_PAGE:
-                    self.transfers_page.switch_to_history()
-                else:
-                    self.transfers_page.switch_to_active()
-            btn = self.navigation.button(self.TRANSFERS_PAGE)
-            if btn:
-                btn.setChecked(True)
-            return
         self.pages.setCurrentIndex(index)
         btn = self.navigation.button(index)
         if btn:
             btn.setChecked(True)
+
+    def show_tasks(self):
+        self.show_page(self.TRANSFERS_PAGE)
+        self.transfers_page.switch_to_active()
+
+    def show_history(self):
+        self.show_page(self.TRANSFERS_PAGE)
+        self.transfers_page.switch_to_history()
 
     def continue_adding(self):
         self.clear_url()
@@ -846,6 +816,7 @@ class MainWindow(QMainWindow):
         return worker
 
     def worker_finished(self, worker):
+        inspect_finished = worker is self.inspection
         if worker is self.inspection:
             self.inspection = None
             self.parse_button.setText(t("dl_analyze", "解析视频"))
@@ -855,6 +826,9 @@ class MainWindow(QMainWindow):
         self.update_actions()
         worker.deleteLater()
         self.maybe_finish_close()
+        if inspect_finished and self._pending_analysis and not self.closing:
+            self._pending_analysis = False
+            self.analyze()
 
     def changeEvent(self, event):
         if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
@@ -879,6 +853,7 @@ class MainWindow(QMainWindow):
         return super().eventFilter(watched, event)
 
     def _on_url_text_changed(self, text):
+        self.invalidate_video()
         if hasattr(self, "clear_btn"):
             self.clear_btn.setVisible(bool(text.strip()))
         if hasattr(self, "clipboard_badge"):
@@ -886,6 +861,7 @@ class MainWindow(QMainWindow):
                 self.clipboard_badge.hide()
 
     def clear_url(self):
+        self._pending_analysis = False
         try:
             cb = QApplication.clipboard().text().strip()
         except Exception:
@@ -925,8 +901,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "pages") and self.pages.currentIndex() != 0:
             return False
         has_downloads = bool(getattr(self, "downloads", None) and self.downloads.active)
-        downloader_busy = getattr(self, "downloader", None) is not None
-        if self.video is not None or has_downloads or downloader_busy or self.inspection is not None:
+        if self.video is not None or has_downloads or self.inspection is not None:
             return False
         try:
             clipboard = QApplication.clipboard().text().strip()
@@ -957,9 +932,7 @@ class MainWindow(QMainWindow):
         return True
 
     def go_to_transfers(self):
-        self.pages.setCurrentIndex(1)
-        if hasattr(self, "navigation") and self.navigation.button(1):
-            self.navigation.button(1).setChecked(True)
+        self.show_tasks()
 
     def reset_for_next(self):
         try:
@@ -1036,7 +1009,7 @@ class MainWindow(QMainWindow):
         self.update_actions()
 
     def analyze(self):
-        if self.inspection or not self.ready:
+        if self.closing or not self.ready:
             if not self.ready:
                 self.show_notice(t("nav_not_ready", "请先在设置中确认内置组件可用。"))
             return
@@ -1045,6 +1018,10 @@ class MainWindow(QMainWindow):
         except UserError as error:
             self.show_notice(str(error))
             return
+        if self.inspection:
+            self._pending_analysis = url != self._analysis_url
+            return
+        self._analysis_url = url
         self.invalidate_video()
         if hasattr(self, "empty_placeholder"):
             self.empty_placeholder.hide()
@@ -1062,9 +1039,23 @@ class MainWindow(QMainWindow):
         self.parse_button.setText(t("dl_analyzing", "解析中…"))
         self.inspection = self.spawn({"command": "analyze", "url": url, "proxy": self.store.get_setting("proxy", ""),
                                       "use_auth": self.store.get_setting("use_auth", False)},
-                                     self.show_video, self.analysis_error)
+                                     self.analysis_result, self.analysis_error)
+
+    def analysis_matches_input(self):
+        if self.closing:
+            return False
+        try:
+            return self._analysis_url == normalize_url(self.url_input.text())
+        except UserError:
+            return False
+
+    def analysis_result(self, info):
+        if self.analysis_matches_input():
+            self.show_video(info)
 
     def analysis_error(self, message):
+        if not self.analysis_matches_input():
+            return
         self.show_notice(message)
         if hasattr(self, "empty_placeholder"):
             self.empty_placeholder.hide()
@@ -1156,8 +1147,7 @@ class MainWindow(QMainWindow):
         self.sync_chip_selection()
         if hasattr(self, "download_button"):
             self.download_button.setEnabled(self.ready and self.video is not None
-                                            and self.formats.currentRow() >= 0 and not self.closing
-                                            and getattr(self, "downloader", None) is None)
+                                            and self.formats.currentRow() >= 0 and not self.closing)
             self.download_button.setText(t("task_add"))
 
     def start_download(self):
@@ -1172,17 +1162,18 @@ class MainWindow(QMainWindow):
             return
         self.downloads.set_ready(self.ready)
         job, created = self.downloads.enqueue(info, option, self.directory())
-        self.added_notice.setText(t("task_added" if created else "task_duplicate").format(title=job["title"]))
+        self.added_banner_label.setText(t("task_added" if created else "task_duplicate").format(title=job["title"]))
         self.added_actions.show()
         if not created:
             self.focus_task(job["id"])
 
     def focus_task(self, job_id):
-        self.show_page(self.TASKS_PAGE)
+        self.show_tasks()
+        self.search_input.clear()
         self.task_list.select(job_id, focus=True)
         card = self.task_list.cards.get(job_id)
         if card:
-            self.pages.widget(self.TASKS_PAGE).ensureWidgetVisible(card)
+            self.transfers_page.task_scroll.ensureWidgetVisible(card)
 
     def retry_task(self, job_id):
         if not self.ready or self.closing:
@@ -1227,7 +1218,7 @@ class MainWindow(QMainWindow):
         if self.closing:
             return
         self.showNormal()
-        self.show_page(self.TASKS_PAGE)
+        self.show_tasks()
         self.raise_()
         self.activateWindow()
 
@@ -1262,7 +1253,15 @@ class MainWindow(QMainWindow):
         if hasattr(self, "mini_status"):
             self.mini_status.setText(speed)
         if hasattr(self, "sidebar_mini_task"):
-            self.sidebar_mini_task.setVisible(count > 0 or bool(getattr(self, "current_job", None)))
+            self.sidebar_mini_task.setVisible(count > 0)
+        if hasattr(self, "mini_progress"):
+            percentages = [self.downloads.progress.get(identity, {}).get("percent")
+                           for identity in self.downloads.active]
+            if percentages and any(value is None for value in percentages):
+                self.mini_progress.setRange(0, 0)
+            else:
+                self.mini_progress.setRange(0, 100)
+                self.mini_progress.setValue(int(sum(percentages) / len(percentages)) if percentages else 0)
         if hasattr(self, "task_summary"):
             self.task_summary.setText(caption + " · " + speed + " · " +
                                       t("task_parallel").format(count=self.downloads.max_parallel))
@@ -1270,126 +1269,9 @@ class MainWindow(QMainWindow):
             btn = self.navigation.button(self.TRANSFERS_PAGE)
             if btn:
                 btn.setText(t("nav_transfers", "⇋   传输列表") + (f"  {count}" if count else ""))
-        if hasattr(self, "resume_queue_button"):
-            self.resume_queue_button.setVisible(self.downloads.paused and summary["waiting"] > 0)
-            self.resume_queue_button.setEnabled(self.ready)
-
-    def show_progress(self, event):
-        state = event.get("state", "downloading")
-        if self.current_job:
-            self.current_job["state"] = state
-            self.store.save_job(self.current_job)
-            self.refresh_history()
-
-        p1 = t("step_prep", "准备")
-        p2 = t("step_download", "下载")
-        p3 = t("step_merge", "合并")
-        p4 = t("dl_progress_verifying_val", "校验")
-        p5 = t("step_done", "完成")
-        step_map = {
-            "starting": f"① [{p1}]  →  ② {p2}  →  ③ {p3}  →  ④ {p4}  →  ⑤ {p5}",
-            "downloading": f"① {p1}  →  ② [{p2}]  →  ③ {p3}  →  ④ {p4}  →  ⑤ {p5}",
-            "merging": f"① {p1}  →  ② {p2}  →  ③ [{p3}]  →  ④ {p4}  →  ⑤ {p5}",
-            "verifying": f"① {p1}  →  ② {p2}  →  ③ {p3}  →  ④ [{p4}]  →  ⑤ {p5}",
-            "completed": f"① {p1}  →  ② {p2}  →  ③ {p3}  →  ④ {p4}  →  ⑤ [{p5}]",
-        }
-        if hasattr(self, "step_indicator"):
-            self.step_indicator.setText(step_map.get(state, self.step_indicator.text()))
-
-        if hasattr(self, "sidebar_mini_task"):
-            self.sidebar_mini_task.show()
-            if self.current_job:
-                self.mini_title.setText(self.current_job["title"][:20] + ("…" if len(self.current_job["title"]) > 20 else ""))
-
-        if hasattr(self, "progress_title") and self.current_job:
-            self.progress_title.setText(STATE_LABELS.get(state, state) + " · " + self.current_job["title"])
-        percent = event.get("percent")
-        if percent is None:
-            if hasattr(self, "progress_bar"):
-                self.progress_bar.setRange(0, 0)
-            caption = {
-                "starting": t("dl_progress_starting_val", "准备中"),
-                "merging": t("dl_progress_merging_val", "合并中"),
-                "verifying": t("dl_progress_verifying_val", "校验中"),
-            }.get(state, t("dl_progress_downloading_val", "下载中"))
-            if hasattr(self, "progress_value"):
-                self.progress_value.setText(caption)
-            if hasattr(self, "mini_progress"):
-                self.mini_progress.setRange(0, 0)
-            if hasattr(self, "mini_status"):
-                self.mini_status.setText(caption)
-        else:
-            value = max(0, min(99, int(percent)))
-            if hasattr(self, "progress_bar"):
-                self.progress_bar.setRange(0, 100)
-                self.progress_bar.setValue(value)
-            if hasattr(self, "progress_value"):
-                self.progress_value.setText(f"{value}%")
-            if hasattr(self, "mini_progress"):
-                self.mini_progress.setRange(0, 100)
-                self.mini_progress.setValue(value)
-            if hasattr(self, "mini_status"):
-                self.mini_status.setText(f"{value}%")
-
-        if hasattr(self, "progress_meta"):
-            if state == "downloading":
-                details = t("dl_downloaded", "已下载") + " " + size_text(event.get("downloaded_bytes", 0))
-                if event.get("total_bytes"):
-                    details += " / " + size_text(event["total_bytes"])
-                else:
-                    details += "  ·  " + t("dl_total_unknown", "总大小待确定")
-                if event.get("speed"):
-                    details += "  ·  " + size_text(event["speed"]) + "/s"
-                if event.get("eta") is not None:
-                    details += "  ·  " + t("dl_eta", "剩余") + " " + duration_text(event["eta"])
-                self.progress_meta.setText(details)
-            else:
-                self.progress_meta.setText({
-                    "starting": t("dl_progress_refreshing", "正在刷新所选格式和音频"),
-                    "merging": t("dl_progress_merging_meta", "正在无损合并画面与声音"),
-                    "verifying": t("dl_progress_verifying_meta", "正在检查视频轨、音频轨和时长"),
-                }.get(state, ""))
-
-    def download_done(self, result):
-        if not self.current_job:
-            return
-        self.current_job.update(state="completed", result=result, error="")
-        self.store.save_job(self.current_job)
-        if hasattr(self, "progress_bar"):
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(100)
-        if hasattr(self, "progress_value"):
-            self.progress_value.setText("100%")
-        if hasattr(self, "sidebar_mini_task"):
-            self.sidebar_mini_task.hide()
-        self.last_downloaded_path = result.get("path")
-        self.current_job = None
-        self.refresh_history()
-
-    def finish_unsuccessful(self, state, message):
-        if not self.current_job:
-            return
-        job = self.current_job
-        job.update(state=state, error=message)
-        self.store.save_job(job)
-        if hasattr(self, "progress_bar"):
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(0)
-        if hasattr(self, "progress_value"):
-            self.progress_value.setText(STATE_LABELS.get(state, state))
-        if hasattr(self, "sidebar_mini_task"):
-            self.sidebar_mini_task.hide()
-        self.current_job = None
-        self.refresh_history()
-
-    def play_downloaded(self):
-        if self.last_downloaded_path and Path(self.last_downloaded_path).is_file():
-            os.startfile(Path(self.last_downloaded_path))
-
-    def reveal_downloaded(self):
-        if self.last_downloaded_path and Path(self.last_downloaded_path).is_file():
-            subprocess.Popen([str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"),
-                              "/select,", str(Path(self.last_downloaded_path))])
+        if hasattr(self, "transfers_page"):
+            self.transfers_page.update_queue_controls()
+            self.transfers_page.update_badges(count, self.store.job_count())
 
     def confirm_delete(self, job_id):
         job = self.downloads.get(job_id)
@@ -1481,16 +1363,16 @@ class MainWindow(QMainWindow):
 
     def on_search_text_changed(self, text: str):
         self._render_history_table()
-        if hasattr(self, "history_count_label"):
-            total = self.store.job_count()
-            shown = len(getattr(self, "display_jobs", []))
-            if text.strip():
-                self.history_count_label.setText(f"{shown} / 共 {total} 条记录")
-            else:
-                caption = t("hist_total_records", "共 {count} 条记录").format(count=total)
-                if total > len(self.history_jobs):
-                    caption += t("hist_shown_records", "（显示最近 {shown} 条）").format(shown=len(self.history_jobs))
-                self.history_count_label.setText(caption)
+
+    def update_history_count(self):
+        total = self.store.job_count()
+        if self.search_input.text().strip():
+            caption = t("hist_filtered_records").format(shown=len(self.display_jobs), count=total)
+        else:
+            caption = t("hist_total_records").format(count=total)
+            if total > len(self.history_jobs):
+                caption += t("hist_shown_records").format(shown=len(self.history_jobs))
+        self.history_count_label.setText(caption)
 
     def _get_sorted_jobs(self):
         jobs = list(self.history_jobs)
@@ -1528,25 +1410,12 @@ class MainWindow(QMainWindow):
 
     def refresh_history(self):
         self.history_jobs = self.store.jobs()
-        if hasattr(self, "history_count_label"):
-            total = self.store.job_count()
-            search_kw = self.search_input.text().strip() if hasattr(self, "search_input") else ""
-            if search_kw:
-                shown = len(getattr(self, "display_jobs", []))
-                self.history_count_label.setText(f"{shown} / 共 {total} 条记录")
-            else:
-                caption = t("hist_total_records", "共 {count} 条记录").format(count=total)
-                if total > len(self.history_jobs):
-                    caption += t("hist_shown_records", "（显示最近 {shown} 条）").format(shown=len(self.history_jobs))
-                self.history_count_label.setText(caption)
         if hasattr(self, "clear_history_button"):
             self.clear_history_button.setEnabled(self.store.has_finished_jobs())
         if hasattr(self, "transfers_page"):
             summary = self.downloads.summary() if hasattr(self, "downloads") else {"running": 0, "waiting": 0}
             active_count = summary["running"] + summary["waiting"]
-            self.transfers_page.update_badges(active_count, len(self.history_jobs))
-            if active_count == 0 and not getattr(self, "current_job", None):
-                self.transfers_page.switch_to_history()
+            self.transfers_page.update_badges(active_count, self.store.job_count())
         self._render_history_table()
 
     def _render_history_table(self):
@@ -1606,6 +1475,7 @@ class MainWindow(QMainWindow):
         else:
             self.history_detail.setText(t("hist_select_hint", "选择记录查看详情。"))
         self.select_history()
+        self.update_history_count()
 
     def selected_job(self):
         row = self.history.currentRow()
@@ -1615,16 +1485,13 @@ class MainWindow(QMainWindow):
     def select_history(self):
         if not hasattr(self, "reveal_button"):
             return
-        if hasattr(self, "transfers_page") and self.history.currentRow() >= 0:
-            if self.transfers_page.content_stack.currentIndex() != 1:
-                self.transfers_page.switch_to_history()
         job = self.selected_job()
         has_file = bool(job and job.get("result", {}).get("path"))
         self.reveal_button.setEnabled(has_file)
         if hasattr(self, "play_history_button"):
             self.play_history_button.setEnabled(has_file)
         if hasattr(self, "delete_history_button"):
-            self.delete_history_button.setEnabled(bool(job and job.get("state") not in ACTIVE_STATES and not job.get("delete_requested")))
+            self.delete_history_button.setEnabled(bool(job and not job.get("delete_requested") and not self.closing))
         self.retry_button.setEnabled(bool(job and job["state"] in {"completed", "failed", "cancelled", "interrupted"} and not self.closing))
         if job:
             self.history_detail.setText(job.get("error") or job.get("result", {}).get("path", t("hist_in_progress", "任务正在进行")))
@@ -1655,7 +1522,7 @@ class MainWindow(QMainWindow):
 
     def delete_selected(self):
         job = self.selected_job()
-        if job and job.get("state") not in ACTIVE_STATES and not job.get("delete_requested"):
+        if job and not job.get("delete_requested") and not self.closing:
             self.confirm_delete(job["id"])
 
     def clear_all_history(self):
@@ -1710,7 +1577,9 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
 
         delete_act = menu.addAction(t("hist_menu_delete", "🗑  删除此记录 (Del)"))
-        delete_act.setEnabled(bool(job and job.get("state") not in ACTIVE_STATES and not job.get("delete_requested")))
+        delete_act.setEnabled(bool(job and not job.get("delete_requested") and not self.closing))
+        delete_act.setShortcut(QKeySequence(Qt.Key.Key_Delete))
+        delete_act.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
         delete_act.triggered.connect(lambda: self.confirm_delete(job["id"]))
 
         try:
@@ -1876,7 +1745,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         if self.closing:
-            if (hasattr(self, "downloads") and self.downloads.active) or any(getattr(w, "isRunning", lambda: False)() for w in self.workers):
+            if self.downloads.active or self.workers:
                 event.ignore()
             else:
                 event.accept()
@@ -1894,14 +1763,12 @@ class MainWindow(QMainWindow):
             event.ignore()
             self.showMinimized()
             return
-        counts = self.downloads.summary() if hasattr(self, "downloads") else {"running": 0, "waiting": 0}
-        has_legacy_active = bool(self.downloader and getattr(self.downloader, "isRunning", lambda: False)()) or bool(self.current_job and self.current_job.get("state") in ACTIVE_STATES)
-        if counts["running"] or counts["waiting"] or has_legacy_active:
-            msg = t("task_exit_confirm").format(**counts) if (counts["running"] or counts["waiting"]) else "退出会中断当前下载。可最小化窗口继续下载。\n\n确定退出？"
+        counts = self.downloads.summary()
+        if counts["running"] or counts["waiting"]:
             answer = QMessageBox.question(
                 self,
                 t("dialog_exit_confirm_title", "确认退出"),
-                msg,
+                t("task_exit_confirm").format(**counts),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -1909,7 +1776,6 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
         if remember:
-            self.remember_action = action
             self.remember_close_action("exit")
         self.closing = True
         self.completion_notifier.shutdown()
@@ -1917,15 +1783,9 @@ class MainWindow(QMainWindow):
         self.downloads.shutdown()
         for worker in list(self.workers):
             worker.cancel()
-        for worker in list(self.workers):
-            if hasattr(worker, "wait"):
-                worker.wait(10000)
-        self.workers.clear()
-        if self.current_job:
-            self.finish_unsuccessful("interrupted", "应用退出，任务已中断。可以重新下载。")
         if self.thumbnail_reply:
             self.thumbnail_reply.abort()
-        if (self.downloads.active if hasattr(self, "downloads") else False) or self.workers:
+        if self.downloads.active or self.workers:
             event.ignore()
         else:
             event.accept()

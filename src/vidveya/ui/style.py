@@ -121,7 +121,7 @@ def get_theme_stylesheet(theme: str = "system") -> str:
     check_file = asset_path("check-white.svg")
     check_url = check_file.resolve().as_posix()
     return f"""
-QMainWindow, QWidget#Workspace, QWidget#Page {{
+QMainWindow, QWidget#Workspace, QWidget#Page, QWidget#TaskList {{
     background: {tokens['bg_app']};
 }}
 QWidget {{

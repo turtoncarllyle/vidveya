@@ -2,23 +2,29 @@
 
 ## 中文
 
-- 新增独立“下载任务”页，支持连续添加和并行下载：默认 3 个任务，设置可调整为 1～5 个；各任务独立显示进度、速度、剩余时间及合并/校验状态。
+- 新增统一“传输列表”工作台，以“下载任务 / 下载记录”标签切换，支持连续添加、搜索和并行下载：默认 3 个任务，设置可调整为 1～5 个；各任务独立显示进度、速度、剩余时间及合并/校验状态。
 - 默认额外自动重试 3 次（最多尝试 4 次），设置范围 0～10。临时网络故障按 10、30、60 秒退避；429 至少等待 60 秒并遵守更长的服务器等待时间。等待重试释放名额，到期后排入队尾。
 - 下载记录支持右键删除和 Delete 快捷键，确认取消并移除任务和记录，保留成功视频；删除活动任务会等待其进程退出，普通取消仍可重试。下载任务页仅保留任务操作按钮。
-- 保留队列与重试计划，重启后手动继续；已中断任务支持手动重试，退出时收齐全部工作进程结果。
+- 支持“暂停队列 / 继续队列”：暂停新任务的启动，正在下载、合并和校验的任务继续执行。保留队列与重试计划，重启后手动继续；已中断任务支持手动重试，退出时收齐全部工作进程结果。
 - 清晰度卡片展示实际像素尺寸、FPS 和预计大小；音视频校验成功后播放可关闭的系统提示音，1 秒内完成的任务合并提醒。
 - 新增可独立开关的右下角桌面通知，默认关闭；开启后显示下载成功的视频名称和清晰度，可直接打开文件、打开所在文件夹或查看任务，最小化时也可提醒。
+- 修正任务与记录标签跳转、重复任务定位、失败任务重试入口、解析期间切换链接及退出回执收尾；改善深色主题和最小窗口布局。
 - 保留源编码、无损合并和音视频验证，不自动转码；应用及构建版本统一为 `0.1.8`。
+
+本次源码验证：143 项测试及 Ruff 检查通过；真实 720P / 1080P 并发下载、最小化继续下载、双声道音频和抽样画面解码通过。中英文、浅深主题和 940×720 最小窗口均已检查。本轮未对 4K、8K、Shorts 或会员账号进行真实网络回归，也未在全新 Windows 虚拟机中验收。
 
 ## English
 
-- Add a dedicated Download Tasks page with continuous task creation and independent progress, speed, ETA, merging, and verification. Run 3 tasks by default, configurable from 1 to 5.
+- Add a unified Transfers workbench with searchable Tasks and History tabs, continuous task creation, and independent progress, speed, ETA, merging, and verification. Run 3 tasks by default, configurable from 1 to 5.
 - Retry transient failures 3 extra times by default (4 attempts total), configurable from 0 to 10. Back off for 10, 30, then 60 seconds; HTTP 429 waits at least 60 seconds and honors longer server delays. Retry waits release slots and rejoin the queue tail when due.
 - Support the context menu and Delete key in History to confirm cancellation and remove records while keeping completed files. Active removal waits for worker exit; ordinary cancellation keeps retryable history. Download Tasks retains its task action buttons.
-- Preserve queues and retry plans across restarts for manual resume. Interrupted tasks can be retried manually, and exit waits for all workers to finish.
+- Pause or resume the queue without stopping downloads, merging, or verification already in progress. Preserve queues and retry plans across restarts for manual resume. Interrupted tasks can be retried manually, and exit waits for all workers to finish.
 - Show pixel dimensions, FPS, and estimated size on quality cards. Play an optional system sound after media verification, combining completions within one second.
 - Add an independently configurable desktop notification at the bottom right, off by default. When enabled, it shows completed video titles and quality, with actions to open each file, reveal its folder, or view Download Tasks, even while minimized.
+- Fix tab navigation, duplicate-task selection, failed-task retry access, URL changes during analysis, and shutdown callbacks. Improve dark-theme and minimum-window layouts.
 - Keep source codecs, lossless merging, and audio/video validation without automatic transcoding. Align application and build versions at `0.1.8`.
+
+Source validation: 143 tests and Ruff passed, along with live parallel 720p / 1080p downloads, continued downloads while minimized, stereo audio, and sampled video decoding. Both languages, light/dark themes, and the 940×720 minimum window were checked. This round did not include live 4K, 8K, Shorts, or member-account regression tests, or validation in a fresh Windows VM.
 
 # v0.1.7
 

@@ -286,3 +286,36 @@ def test_shutdown_during_retry_wait_does_not_start_attempt(scheduler, tmp_path):
     now[0] += 999
     manager.tick()
     assert job["state"] == "retry_wait" and len(factory.workers) == 1
+
+
+def test_paused_queue_holds_due_retries_and_resumes_without_cancelling_workers(scheduler, tmp_path):
+    manager, factory, now = scheduler
+    manager.set_max_parallel(1)
+    first, second = add(manager, tmp_path), add(manager, tmp_path, 1)
+    factory.workers[0].fail()
+    manager.pause_queue()
+    now[0] += 100
+    manager.tick()
+    assert first['state'] == 'retry_wait' and second['state'] == 'starting'
+    factory.workers[1].succeed(result_for(tmp_path))
+    assert not manager.active and len(factory.workers) == 2
+    manager.resume_queue()
+    assert first['state'] == 'starting' and first['attempts'] == 2
+    assert len(factory.workers) == 3
+    for worker in factory.workers:
+        worker.cancel.assert_not_called()
+
+
+@pytest.mark.parametrize('state', ['completed', 'cancelled', 'failed'])
+def test_restart_finishes_deletion_even_if_terminal_state_was_saved(qapp, tmp_path, state):
+    store = Store(tmp_path / 'delete-recovery.db')
+    identity = str(uuid.uuid4())
+    result = result_for(tmp_path)
+    store.save_job({'id': identity, 'created': '2026-01-01', 'state': state, 'delete_requested': True,
+                    'directory': str(tmp_path), 'result': result})
+    manager = DownloadManager(store, worker_factory=WorkerFactory())
+    assert store.job(identity) is None and identity not in manager.jobs
+    assert Path(result['path']).read_bytes() == b'video-audio-verified-fixture'
+    manager.shutdown()
+    manager.deleteLater()
+    store.close()

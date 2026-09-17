@@ -19,12 +19,14 @@ jobs:
           cache: pip
       - run: python -m pip install -r requirements-build.lock
       - run: python -m pytest -q
+        env:
+          QT_QPA_PLATFORM: offscreen
       - run: python -m ruff check src scripts tests
       - run: python scripts/build.py
       - uses: softprops/action-gh-release@v2
         with:
           name: VidVeya ${{ github.ref_name }}
-          draft: false
+          draft: true
           body_path: release/RELEASE_NOTES_CURRENT.md
           files: |
             release/VidVeya-*-win-x64-setup.exe

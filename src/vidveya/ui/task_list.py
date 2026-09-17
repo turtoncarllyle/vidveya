@@ -61,6 +61,7 @@ class TaskCard(QFrame):
 
         # 5. 醒目自适应重试倒计时横幅与错误提示
         self.retry_banner = QLabel()
+        self.retry_banner.setTextFormat(Qt.TextFormat.PlainText)
         self.retry_banner.setObjectName("RetryCountdown")
         self.retry_banner.setWordWrap(True)
         self.retry_banner.hide()
@@ -158,7 +159,8 @@ class TaskCard(QFrame):
         details = ""
         if state == "downloading":
             details = t("dl_downloaded") + " " + size_text(progress.get("downloaded_bytes", 0))
-            details += " / " + size_text(progress.get("total_bytes"))
+            details += (" / " + size_text(progress["total_bytes"]) if progress.get("total_bytes")
+                        else " · " + t("dl_total_unknown"))
             if progress.get("speed"):
                 details += " · " + size_text(progress["speed"]) + "/s"
             if progress.get("eta") is not None:
@@ -173,7 +175,8 @@ class TaskCard(QFrame):
         if state == "retry_wait":
             seconds = max(0, math.ceil((job.get("next_retry_at") or now) - now))
             err_text = job.get("error", "")
-            banner_text = f"⚠️ {t('task_retry_wait').format(number=job['attempts'], limit=job['retry_limit'], seconds=seconds)}"
+            banner_text = "⚠️ " + t("task_retry_wait").format(
+                number=job.get("attempts", 1), limit=job.get("retry_limit", 3), seconds=seconds)
             if err_text:
                 banner_text += f"\n   {err_text}"
             self.retry_banner.setText(banner_text)
@@ -200,6 +203,8 @@ class TaskList(QWidget):
 
     def __init__(self, manager, parent=None):
         super().__init__(parent)
+        self.setObjectName('TaskList')
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
         self.manager = manager
         self.cards = {}
         self.selected_id = None
@@ -222,6 +227,7 @@ class TaskList(QWidget):
             self.groups.append((frame, column, heading, key))
         self.empty = text_label(t("task_empty"))
         layout.addWidget(self.empty)
+        layout.addStretch(1)
         manager.job_changed.connect(self.refresh)
         manager.job_removed.connect(self.refresh)
         manager.summary_changed.connect(self.refresh)
@@ -232,17 +238,30 @@ class TaskList(QWidget):
         self._apply_filter()
 
     def _apply_filter(self):
-        kw = getattr(self, "filter_keyword", "")
-        visible_any = False
-        for identity, card in self.cards.items():
-            job = self.manager.get(identity)
-            if not job:
-                continue
-            matches = not kw or kw in job.get("title", "").lower()
-            card.setVisible(matches)
-            if matches:
-                visible_any = True
-        self.empty.setVisible(not visible_any)
+        self.visible_ids = []
+        for identities, (frame, _, heading, key) in zip(self._signature or (), self.groups):
+            matches = []
+            for identity in identities:
+                job = self.manager.get(identity)
+                visible = bool(job) and (not self.filter_keyword or any(
+                    self.filter_keyword in str(job.get(field, "")).lower() for field in ("title", "url", "id")))
+                self.cards[identity].setVisible(visible)
+                if visible:
+                    matches.append(identity)
+            self.visible_ids.extend(matches)
+            frame.setVisible(bool(matches))
+            heading.setText(t(key) + f" ({len(matches)})")
+        self.empty.setVisible(not self.visible_ids)
+        self.empty.setText(t("hist_filter_empty") if self.filter_keyword else t("task_empty"))
+        if self.selected_id not in self.visible_ids:
+            previous = self.cards.get(self.selected_id)
+            if previous:
+                previous.setProperty("selected", "false")
+                previous.style().unpolish(previous)
+                previous.style().polish(previous)
+            self.selected_id = None
+            if self.visible_ids:
+                self.select(self.visible_ids[0])
 
     def select(self, job_id, focus=False):
         if self._selecting or job_id not in self.cards:
@@ -304,11 +323,5 @@ class TaskList(QWidget):
                 position = positions.get(identity, 1)
                 card.render(job, self.manager.progress.get(identity, {}), paused=self.manager.paused,
                             now=self.manager.clock(), position=position)
-        self.visible_ids = ids
         self._signature = signature
-        self.empty.setVisible(not ids)
-        if self.selected_id not in ids:
-            self.selected_id = None
-            if ids:
-                self.select(ids[0])
         self._apply_filter()
