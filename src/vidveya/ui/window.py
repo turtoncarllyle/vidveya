@@ -5,8 +5,8 @@ from pathlib import Path
 import subprocess
 import uuid
 
-from PySide6.QtCore import QSignalBlocker, Qt, QUrl, Signal
-from PySide6.QtGui import QColor, QFont, QPixmap
+from PySide6.QtCore import QEvent, QSignalBlocker, Qt, QUrl, Signal
+from PySide6.QtGui import QColor, QFont, QKeySequence, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView,
@@ -334,7 +334,14 @@ class MainWindow(QMainWindow):
         self.url_input.returnPressed.connect(self.analyze)
         self.url_input.textEdited.connect(self.invalidate_video)
         self.url_input.textChanged.connect(self._on_url_text_changed)
+        self.url_input.installEventFilter(self)
         hero_layout.addWidget(self.url_input, 1)
+
+        self.clipboard_badge = label(t("dl_clipboard_detected", "已识别剪贴板中的视频链接"), "Badge")
+        self.clipboard_badge.setObjectName("ClipboardBadge")
+        self.clipboard_badge.setStyleSheet("font-size: 11px; padding: 2px 6px;")
+        self.clipboard_badge.hide()
+        hero_layout.addWidget(self.clipboard_badge)
 
         self.clear_btn = QPushButton("✕")
         self.clear_btn.setObjectName("ClearButton")
@@ -351,9 +358,57 @@ class MainWindow(QMainWindow):
         hero_layout.addWidget(self.parse_button)
         layout.addWidget(self.hero_box)
 
+        # 原地反馈横幅
+        self.added_actions = QFrame()
+        self.added_actions.setObjectName("Card")
+        self.added_actions.setStyleSheet("background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px;")
+        added_layout = QHBoxLayout(self.added_actions)
+        added_layout.setContentsMargins(18, 12, 18, 12)
+        added_layout.setSpacing(14)
+
+        self.added_banner_label = label("✓  " + t("dl_added_banner", "任务已加入下载队列"), "Subheading")
+        self.added_banner_label.setStyleSheet("color: #10B981; font-weight: 600; font-size: 14px;")
+        added_layout.addWidget(self.added_banner_label)
+
+        added_layout.addStretch()
+
+        self.view_transfers_btn = button(t("dl_view_transfers", "查看传输列表 ➔"), self.go_to_transfers)
+        self.view_transfers_btn.setStyleSheet("font-size: 13px; font-weight: 600;")
+        added_layout.addWidget(self.view_transfers_btn)
+
+        self.continue_add_btn = button(t("dl_continue", "继续添加"), self.reset_for_next)
+        self.continue_add_btn.setStyleSheet("font-size: 13px;")
+        added_layout.addWidget(self.continue_add_btn)
+
+        self.added_actions.hide()
+        layout.addWidget(self.added_actions)
+
         self.notice = label("", "Notice", True)
         self.notice.hide()
         layout.addWidget(self.notice)
+
+        # 居中引导空状态
+        self.empty_placeholder = QFrame()
+        self.empty_placeholder.setObjectName("SubCard")
+        empty_layout = QVBoxLayout(self.empty_placeholder)
+        empty_layout.setContentsMargins(32, 44, 32, 44)
+        empty_layout.setSpacing(12)
+        empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        empty_icon = label("🎬")
+        empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_icon.setStyleSheet("font-size: 36px; background: transparent;")
+        empty_layout.addWidget(empty_icon)
+
+        self.empty_guide_title = label(t("dl_empty_guide", "复制 YouTube 视频链接，在此处开始下载"), "Subheading")
+        self.empty_guide_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(self.empty_guide_title)
+
+        self.empty_guide_subtitle = label(t("dl_empty_sub", "支持普通视频与 Shorts，粘贴链接即可极速解析与下载"), "Muted")
+        self.empty_guide_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(self.empty_guide_subtitle)
+
+        layout.addWidget(self.empty_placeholder)
 
         # 视频详情卡片
         self.video_card = QFrame()
@@ -375,10 +430,13 @@ class MainWindow(QMainWindow):
         details.addWidget(self.video_title)
         details.addWidget(self.video_meta)
         card_layout.addLayout(details, 1)
+        self.video_card.hide()
         layout.addWidget(self.video_card)
 
         # 模式切换与画质选择栏
-        modes = QHBoxLayout()
+        self.modes_widget = QWidget()
+        modes = QHBoxLayout(self.modes_widget)
+        modes.setContentsMargins(0, 0, 0, 0)
         self.quality_title_label = label(t("dl_quality_title", "选择下载清晰度"), "Section")
         modes.addWidget(self.quality_title_label)
         modes.addSpacing(16)
@@ -393,13 +451,15 @@ class MainWindow(QMainWindow):
         self.mode_group.idClicked.connect(self.change_mode)
         modes.addStretch()
         modes.addWidget(label(t("dl_audio_note", "每个选项均包含音频"), "Muted"))
-        layout.addLayout(modes)
+        self.modes_widget.hide()
+        layout.addWidget(self.modes_widget)
 
         # 现代画质芯片网格容器
         self.chips_widget = QWidget()
         self.chips_layout = QGridLayout(self.chips_widget)
         self.chips_layout.setContentsMargins(0, 0, 0, 0)
         self.chips_layout.setSpacing(10)
+        self.chips_widget.hide()
         layout.addWidget(self.chips_widget)
 
         # 格式列表（表格美化，圆角且行高舒适；默认折叠以芯片卡片为主，保持底层测试与高级参数兼容）
@@ -423,6 +483,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.formats)
 
         self.format_hint = label(t("dl_hint_idle", "解析后显示源视频实际提供的清晰度。"), "Muted", True)
+        self.format_hint.hide()
         layout.addWidget(self.format_hint)
 
         # 进度与状态反馈卡片
@@ -793,24 +854,92 @@ class MainWindow(QMainWindow):
         self.update_actions()
         worker.deleteLater()
 
+    def changeEvent(self, event):
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self.sniff_clipboard()
+        super().changeEvent(event)
+
+    def eventFilter(self, watched, event):
+        if watched is getattr(self, "url_input", None):
+            if event.type() == QEvent.Type.FocusIn:
+                self.sniff_clipboard()
+            elif event.type() == QEvent.Type.KeyPress:
+                if event.matches(QKeySequence.StandardKey.Paste):
+                    self.paste_smart()
+                    return True
+        return super().eventFilter(watched, event)
+
     def _on_url_text_changed(self, text):
         if hasattr(self, "clear_btn"):
             self.clear_btn.setVisible(bool(text.strip()))
+        if hasattr(self, "clipboard_badge") and not text.strip():
+            self.clipboard_badge.hide()
 
     def clear_url(self):
         self.url_input.clear()
         self.invalidate_video()
         if hasattr(self, "clear_btn"):
             self.clear_btn.hide()
+        if hasattr(self, "clipboard_badge"):
+            self.clipboard_badge.hide()
+        if hasattr(self, "added_actions"):
+            self.added_actions.hide()
 
     def paste_smart(self):
-        clipboard = QApplication.clipboard().text().strip()
-        if clipboard:
-            self.url_input.setText(clipboard)
-            if hasattr(self, "clear_btn"):
-                self.clear_btn.show()
-            if self.ready:
-                self.analyze()
+        try:
+            clipboard = QApplication.clipboard().text().strip()
+        except Exception:
+            return
+        if not clipboard:
+            return
+        self.url_input.setText(clipboard)
+        if hasattr(self, "clear_btn"):
+            self.clear_btn.show()
+        if hasattr(self, "clipboard_badge"):
+            self.clipboard_badge.hide()
+        try:
+            normalize_url(clipboard)
+            is_valid = True
+        except UserError:
+            is_valid = False
+        if is_valid and self.ready:
+            self.analyze()
+
+    def sniff_clipboard(self) -> bool:
+        try:
+            clipboard = QApplication.clipboard().text().strip()
+        except Exception:
+            return False
+        if not clipboard:
+            return False
+        try:
+            normalize_url(clipboard)
+            is_valid = True
+        except UserError:
+            is_valid = False
+        if not is_valid:
+            return False
+        current_text = self.url_input.text().strip()
+        if clipboard == current_text:
+            return False
+        self.url_input.setText(clipboard)
+        if hasattr(self, "clear_btn"):
+            self.clear_btn.show()
+        if hasattr(self, "clipboard_badge"):
+            self.clipboard_badge.setText(t("dl_clipboard_detected", "已识别剪贴板中的视频链接"))
+            self.clipboard_badge.show()
+        return True
+
+    def go_to_transfers(self):
+        self.pages.setCurrentIndex(1)
+        if hasattr(self, "navigation") and self.navigation.button(1):
+            self.navigation.button(1).setChecked(True)
+
+    def reset_for_next(self):
+        if hasattr(self, "added_actions"):
+            self.added_actions.hide()
+        self.clear_url()
+        self.url_input.setFocus()
 
     def paste(self):
         self.paste_smart()
@@ -862,6 +991,16 @@ class MainWindow(QMainWindow):
         self.video = None
         self.formats.setRowCount(0)
         self.clear_quality_chips()
+        if hasattr(self, "empty_placeholder"):
+            self.empty_placeholder.show()
+        if hasattr(self, "video_card"):
+            self.video_card.hide()
+        if hasattr(self, "modes_widget"):
+            self.modes_widget.hide()
+        if hasattr(self, "chips_widget"):
+            self.chips_widget.hide()
+        if hasattr(self, "format_hint"):
+            self.format_hint.hide()
         self.update_actions()
 
     def analyze(self):
@@ -875,6 +1014,14 @@ class MainWindow(QMainWindow):
             self.show_notice(str(error))
             return
         self.invalidate_video()
+        if hasattr(self, "empty_placeholder"):
+            self.empty_placeholder.hide()
+        if hasattr(self, "video_card"):
+            self.video_card.show()
+        if hasattr(self, "clipboard_badge"):
+            self.clipboard_badge.hide()
+        if hasattr(self, "added_actions"):
+            self.added_actions.hide()
         self.show_notice("")
         self.video_title.setText(t("dl_reading_info", "正在读取视频信息…"))
         self.video_meta.setText(t("dl_querying_meta", "正在查询可用清晰度和音轨"))
@@ -887,11 +1034,25 @@ class MainWindow(QMainWindow):
 
     def analysis_error(self, message):
         self.show_notice(message)
+        if hasattr(self, "empty_placeholder"):
+            self.empty_placeholder.hide()
+        if hasattr(self, "video_card"):
+            self.video_card.show()
         self.video_title.setText(t("dl_error_title", "暂时无法读取视频"))
         self.video_meta.setText(t("dl_error_meta", "检查链接和网络后重新解析"))
 
     def show_video(self, info):
         self.video = info
+        if hasattr(self, "empty_placeholder"):
+            self.empty_placeholder.hide()
+        if hasattr(self, "video_card"):
+            self.video_card.show()
+        if hasattr(self, "modes_widget"):
+            self.modes_widget.show()
+        if hasattr(self, "chips_widget"):
+            self.chips_widget.show()
+        if hasattr(self, "format_hint"):
+            self.format_hint.show()
         self.video_title.setText(info["title"])
         access_map = {
             "public": t("access_public", "公开视频"),
@@ -989,6 +1150,8 @@ class MainWindow(QMainWindow):
         self.show_notice("")
         if hasattr(self, "done_actions_widget"):
             self.done_actions_widget.hide()
+        if hasattr(self, "added_actions"):
+            self.added_actions.show()
         self.progress_card.show()
         self.progress_title.setText(t("dl_progress_starting", "准备下载") + " · " + job["title"])
         self.progress_value.setText(t("dl_progress_starting_val", "准备中"))

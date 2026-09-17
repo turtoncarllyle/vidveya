@@ -566,7 +566,7 @@ def test_new_modern_i18n_keys():
     from vidveya.i18n import t, set_language
     for lang in ("zh", "en"):
         set_language(lang)
-        for key in ("hist_search_placeholder", "dl_recommended", "set_auto_saved", "dl_quality_title", "dl_audio_only"):
+        for key in ("hist_search_placeholder", "dl_recommended", "set_auto_saved", "dl_quality_title", "dl_audio_only", "dl_clipboard_detected", "dl_added_banner", "dl_view_transfers", "dl_continue", "dl_empty_guide"):
             assert t(key) != key
 
 
@@ -641,5 +641,154 @@ def test_settings_auto_save_on_changes(make_window):
     window.close_prompt_input.setChecked(False)
     assert window.store.get_setting("confirm_close") is False
 
+def test_paste_smart_auto_analyzes(make_window, monkeypatch):
+    from PySide6.QtWidgets import QApplication
 
+    window = make_window()
+    window.ready = True
+    window.show()
+
+    # 1. Valid YouTube URL in clipboard triggers analyze
+    analyzed_called = False
+
+    def fake_analyze():
+        nonlocal analyzed_called
+        analyzed_called = True
+
+    monkeypatch.setattr(window, "analyze", fake_analyze)
+    monkeypatch.setattr(QApplication.clipboard(), "text", lambda: "https://www.youtube.com/watch?v=YE7VzlLtp-4")
+
+    window.paste_smart()
+    assert window.url_input.text() == "https://www.youtube.com/watch?v=YE7VzlLtp-4"
+    assert analyzed_called is True
+
+    # 2. Invalid URL in clipboard does not trigger analyze
+    analyzed_called = False
+    monkeypatch.setattr(QApplication.clipboard(), "text", lambda: "https://example.com/not_youtube")
+    window.paste_smart()
+    assert window.url_input.text() == "https://example.com/not_youtube"
+    assert analyzed_called is False
+
+    # 3. Non-ready state does not trigger analyze
+    window.ready = False
+    analyzed_called = False
+    monkeypatch.setattr(QApplication.clipboard(), "text", lambda: "https://youtu.be/YE7VzlLtp-4")
+    window.paste_smart()
+    assert window.url_input.text() == "https://youtu.be/YE7VzlLtp-4"
+    assert analyzed_called is False
+
+
+def test_clipboard_sniffing(make_window, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+
+    window = make_window()
+    window.show()
+    assert hasattr(window, "sniff_clipboard")
+
+    # 1. Valid YouTube URL in clipboard automatically fills and shows badge
+    valid_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    monkeypatch.setattr(QApplication.clipboard(), "text", lambda: valid_url)
+
+    result = window.sniff_clipboard()
+    assert result is True
+    assert window.url_input.text() == valid_url
+    assert hasattr(window, "clipboard_badge")
+    assert window.clipboard_badge.isVisible()
+    assert "已识别" in window.clipboard_badge.text()
+
+    # 2. Second call with same text in clipboard returns False and does not re-fill
+    result_again = window.sniff_clipboard()
+    assert result_again is False
+
+    # 3. Invalid URL in clipboard returns False and does not alter existing valid text
+    monkeypatch.setattr(QApplication.clipboard(), "text", lambda: "https://google.com")
+    result_invalid = window.sniff_clipboard()
+    assert result_invalid is False
+    assert window.url_input.text() == valid_url
+
+
+def test_download_in_place_feedback_banner_and_empty_state(make_window, media_info):
+    window = make_window()
+    window.ready = True
+    window.show()
+
+    # 1. Initial empty state shows modern guide and hides video card
+    assert hasattr(window, "empty_placeholder")
+    assert window.empty_placeholder.isVisible()
+    assert window.video_card.isHidden()
+    assert hasattr(window, "added_actions")
+    assert window.added_actions.isHidden()
+    assert "复制 YouTube 视频链接" in window.empty_guide_title.text()
+
+    # 2. Loading video switches from empty state to video card & chips
+    info = {
+        "video_id": media_info["id"],
+        "url": "https://youtu.be/YE7VzlLtp-4",
+        "title": "<中文标题>",
+        "channel": "频道",
+        "duration": 2,
+        "thumbnail": None,
+        "options": [option.to_dict() for option in build_options(media_info)],
+    }
+    window.show_video(info)
+    assert window.empty_placeholder.isHidden()
+    assert window.video_card.isVisible()
+    assert window.chips_widget.isVisible()
+
+    # 3. Starting download displays added_actions banner
+    window.start_download()
+    assert window.added_actions.isVisible()
+    assert hasattr(window, "view_transfers_btn")
+    assert hasattr(window, "continue_add_btn")
+
+    # 4. Clicking 'View Transfers' switches to page index 1
+    window.view_transfers_btn.click()
+    assert window.pages.currentIndex() == 1
+
+    # Switch back to download page (0)
+    window.pages.setCurrentIndex(0)
+    # 5. Clicking 'Continue Add' resets input and hides added_actions banner
+    window.continue_add_btn.click()
+    assert window.added_actions.isHidden()
+    assert window.url_input.text() == ""
+    assert window.empty_placeholder.isVisible()
+    assert window.video_card.isHidden()
+
+
+def test_clipboard_sniffing_event_triggers(make_window, monkeypatch):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    window = make_window()
+    window.show()
+
+    sniff_calls = 0
+    def fake_sniff():
+        nonlocal sniff_calls
+        sniff_calls += 1
+        return True
+
+    monkeypatch.setattr(window, 'sniff_clipboard', fake_sniff)
+
+    # 1. ActivationChange when active triggers sniff_clipboard
+    monkeypatch.setattr(window, 'isActiveWindow', lambda: True)
+    window.changeEvent(QEvent(QEvent.Type.ActivationChange))
+    assert sniff_calls == 1
+
+    # 2. FocusIn on url_input triggers sniff_clipboard
+    focus_event = QEvent(QEvent.Type.FocusIn)
+    window.eventFilter(window.url_input, focus_event)
+    assert sniff_calls == 2
+
+    # 3. Ctrl+V key press on url_input triggers paste_smart
+    paste_calls = 0
+    def fake_paste():
+        nonlocal paste_calls
+        paste_calls += 1
+
+    monkeypatch.setattr(window, 'paste_smart', fake_paste)
+    paste_event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier)
+    handled = window.eventFilter(window.url_input, paste_event)
+    assert handled is True
+    assert paste_calls == 1
 
