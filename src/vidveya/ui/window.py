@@ -1,28 +1,30 @@
 from datetime import datetime
-import json
 import os
 from pathlib import Path
 import subprocess
-import uuid
+import time
 
-from PySide6.QtCore import QEvent, QSignalBlocker, Qt, QUrl, Signal
-from PySide6.QtGui import QColor, QFont, QKeySequence, QPixmap
+from PySide6.QtCore import QEvent, QSignalBlocker, QTimer, Qt, QUrl, Signal
+from PySide6.QtGui import QColor, QFont, QKeySequence, QPixmap, QShortcut
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView,
-    QLabel, QLineEdit, QListView, QMainWindow, QMenu, QMessageBox, QProgressBar, QPushButton,
+    QLabel, QLineEdit, QListView, QMainWindow, QMenu, QMessageBox, QPushButton, QSpinBox,
     QScrollArea, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from .. import __version__
 from ..auth import clear_cookies, import_cookies, vault_path
-from ..engine import cleanup_staging
 from ..i18n import set_language, t
 from ..models import ACTIVE_STATES, FormatOption, STATE_LABELS, UserError
 from ..paths import downloads_dir
 from ..processes import WorkerThread
-from ..store import Store, timestamp
+from ..store import Store
+from ..tasks import DownloadManager, bounded_int
 from ..urls import normalize_url, validate_proxy
+from .formatting import codec_text, duration_text, size_text
+from .notifications import CompletionNotifier, play_completion_sound
+from .task_list import TaskList
 from .style import get_theme_stylesheet, resolve_theme
 
 
@@ -71,29 +73,6 @@ def button(text, callback=None, role=""):
     return widget
 
 
-def size_text(value):
-    if value is None:
-        return t("size_pending", "大小待确定")
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if value < 1024 or unit == "TB":
-            return f"{value:.1f} {unit}"
-        value /= 1024
-
-
-def duration_text(seconds):
-    seconds = max(0, int(seconds or 0))
-    hours, remainder = divmod(seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    return f"{hours}:{minutes:02}:{seconds:02}" if hours else f"{minutes}:{seconds:02}"
-
-
-def codec_text(codec):
-    for prefix, name in (("avc", "H.264"), ("av01", "AV1"), ("vp9", "VP9"), ("vp09", "VP9"), ("hev", "HEVC"), ("hvc", "HEVC")):
-        if codec.startswith(prefix):
-            return name
-    return codec.split(".")[0]
-
-
 class QualityChipWidget(QFrame):
     clicked = Signal(int)
 
@@ -103,7 +82,7 @@ class QualityChipWidget(QFrame):
         self.setObjectName("QualityCard")
         self.setProperty("selected", "false")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedHeight(74)
+        self.setMinimumHeight(96)
 
         card_layout = QVBoxLayout(self)
         card_layout.setContentsMargins(14, 10, 14, 10)
@@ -125,16 +104,23 @@ class QualityChipWidget(QFrame):
         top_row.addStretch()
 
         size_str = size_text(option.estimated_bytes)
+        if option.estimated_bytes is not None:
+            size_str = f"≈ {size_str}"
         size_label = QLabel(size_str)
         size_label.setObjectName("QualitySize")
+        size_label.setToolTip(t("dl_th_size", "预计大小"))
         top_row.addWidget(size_label)
         card_layout.addLayout(top_row)
 
-        fps_str = f" · {option.fps:g}fps" if option.fps else ""
-        meta_str = f"{option.container.upper()} · {codec_text(option.video_codec)}{fps_str}"
+        fps_str = f"{option.fps:g} FPS" if option.fps else t("dl_fps_unknown", "帧率未知")
+        dimensions_str = f"{option.width}×{option.height} · {fps_str}"
+        card_layout.addWidget(label(dimensions_str, "QualityDimensions"))
+
+        meta_str = f"{option.container.upper()} · {codec_text(option.video_codec)}"
         meta_label = QLabel(meta_str)
         meta_label.setObjectName("QualityMeta")
         card_layout.addWidget(meta_label)
+        self.setToolTip(f"{option.label}\n{dimensions_str}\n{meta_str}\n{size_str}")
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -143,13 +129,16 @@ class QualityChipWidget(QFrame):
 
 
 class MainWindow(QMainWindow):
+    NEW_PAGE, TASKS_PAGE, HISTORY_PAGE, SETTINGS_PAGE = range(4)
+
     def __init__(self, store: Store, start_diagnostics=True):
         super().__init__()
         self.store = store
         self.workers = []
         self.inspection = None
-        self.downloader = None
-        self.current_job = None
+        self.downloads = DownloadManager(store, self)
+        self._history_states = {}
+        self._last_sound_at = float('-inf')
         self.video = None
         self.visible_options = []
         self.quick = False
@@ -161,21 +150,30 @@ class MainWindow(QMainWindow):
         self.quality_chips = []
         self.last_downloaded_path = None
         self._dismissed_clipboard = None
-        self._sniffed_text = ""
+        self._sniffed_text = "" 
 
         # 初始化主题与语言（默认跟随系统）
         self.current_theme_setting = self.store.get_setting("theme", "system")
         self.current_lang_setting = self.store.get_setting("language", "system")
         set_language(self.current_lang_setting)
 
+        self.completion_notifier = CompletionNotifier(self, self.store.get_setting("completion_notification", False))
+        self.completion_notifier.activated.connect(self.show_completed_tasks)
+        self.completion_notifier.open_file_requested.connect(self.open_completed_file)
+        self.completion_notifier.open_folder_requested.connect(self.open_completed_folder)
+
         self.setWindowTitle(f"{t('app_title', 'VidVeya · YouTube 视频下载助手')} {__version__}")
         self.resize(1120, 820)
         self.setMinimumSize(940, 720)
         self._build()
         self.apply_theme(self.current_theme_setting)
-        self._restore_receipts()
-        self.store.recover()
+        self.downloads.job_changed.connect(self.on_job_changed)
+        self.downloads.job_removed.connect(self.on_job_removed)
+        self.downloads.summary_changed.connect(self.update_task_summary)
+        self.downloads.completed.connect(self.on_task_completed)
+        self.downloads.drained.connect(self.maybe_finish_close)
         self.refresh_history()
+        self.update_task_summary()
         if start_diagnostics:
             self.check_components()
 
@@ -237,6 +235,7 @@ class MainWindow(QMainWindow):
         self.pages = QStackedWidget()
         nav_items = (
             t("nav_new", "↓   新建下载"),
+            t("nav_tasks"),
             t("nav_history", "▤   下载记录"),
             t("nav_settings", "⚙   设置"),
         )
@@ -245,26 +244,14 @@ class MainWindow(QMainWindow):
             nav.setCheckable(True)
             self.navigation.addButton(nav, index)
             side_layout.addWidget(nav)
-        self.navigation.idClicked.connect(self.pages.setCurrentIndex)
+        self.navigation.idClicked.connect(self.show_page)
+        self.pages.currentChanged.connect(lambda index: self.navigation.button(index).setChecked(True))
         self.navigation.button(0).setChecked(True)
 
         side_layout.addStretch()
 
-        # 侧边栏常驻微型下载指示卡
-        self.sidebar_mini_task = QFrame()
-        self.sidebar_mini_task.setObjectName("SubCard")
-        mini_layout = QVBoxLayout(self.sidebar_mini_task)
-        mini_layout.setContentsMargins(12, 10, 12, 10)
-        mini_layout.setSpacing(6)
-        self.mini_title = label("正在下载…", "Status", True)
-        self.mini_title.setStyleSheet("font-size: 11px; font-weight: 600;")
-        self.mini_progress = QProgressBar()
-        self.mini_progress.setFixedHeight(6)
-        self.mini_progress.setTextVisible(False)
-        self.mini_status = label("", "Eyebrow")
-        mini_layout.addWidget(self.mini_title)
-        mini_layout.addWidget(self.mini_progress)
-        mini_layout.addWidget(self.mini_status)
+        self.sidebar_mini_task = button("", lambda: self.show_page(self.TASKS_PAGE), "TaskSummary")
+        self.sidebar_mini_task.setMinimumHeight(80)
         self.sidebar_mini_task.hide()
         side_layout.addWidget(self.sidebar_mini_task)
 
@@ -292,6 +279,7 @@ class MainWindow(QMainWindow):
         horizontal.addWidget(side)
         horizontal.addWidget(self.pages, 1)
         self._build_download_page()
+        self._build_tasks_page()
         self._build_history_page()
         self._build_settings_page()
         self.setCentralWidget(root)
@@ -484,51 +472,15 @@ class MainWindow(QMainWindow):
         self.format_hint.hide()
         layout.addWidget(self.format_hint)
 
-        # 进度与状态反馈卡片
-        self.progress_card = QFrame()
-        self.progress_card.setObjectName("Card")
-        progress_layout = QVBoxLayout(self.progress_card)
-        progress_layout.setContentsMargins(18, 16, 18, 16)
-        progress_layout.setSpacing(10)
-
-        # 五阶段步进指示器
-        self.step_indicator = label("① 准备  →  ② 下载  →  ③ 合并  →  ④ 校验  →  ⑤ 完成", "Eyebrow")
-        progress_layout.addWidget(self.step_indicator)
-
-        progress_heading = QHBoxLayout()
-        self.progress_title = label(t("dl_progress_starting", "准备下载"), "Subheading", True)
-        progress_heading.addWidget(self.progress_title, 1)
-
-        self.progress_value = label(t("dl_progress_starting_val", "准备中"), "ProgressValue")
-        self.progress_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.progress_value.setMinimumWidth(80)
-        progress_heading.addWidget(self.progress_value)
-        progress_layout.addLayout(progress_heading)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setAccessibleName("下载进度")
-        self.progress_bar.setTextVisible(False)
-        self.progress_bar.setFixedHeight(12)
-        progress_layout.addWidget(self.progress_bar)
-
-        self.progress_meta = label("", "Muted", True)
-        progress_layout.addWidget(self.progress_meta)
-
-        # 完成快捷操作条（播放与定位文件夹）
-        self.done_actions_row = QHBoxLayout()
-        self.done_actions_row.setContentsMargins(0, 0, 0, 0)
-        self.play_button = button(t("dl_btn_play", "播放视频"), self.play_downloaded)
-        self.open_dir_button = button(t("dl_btn_open_dir", "打开文件夹"), self.reveal_downloaded)
-        self.done_actions_row.addWidget(self.play_button)
-        self.done_actions_row.addWidget(self.open_dir_button)
-        self.done_actions_row.addStretch()
-        self.done_actions_widget = QWidget()
-        self.done_actions_widget.setLayout(self.done_actions_row)
-        self.done_actions_widget.hide()
-        progress_layout.addWidget(self.done_actions_widget)
-
-        self.progress_card.hide()
-        layout.addWidget(self.progress_card)
+        self.added_actions = QWidget()
+        added_row = QHBoxLayout(self.added_actions)
+        added_row.setContentsMargins(0, 0, 0, 0)
+        self.added_notice = label("", "Status", True)
+        added_row.addWidget(self.added_notice, 1)
+        added_row.addWidget(button(t("task_add_next"), self.continue_adding))
+        added_row.addWidget(button(t("task_view"), lambda: self.show_page(self.TASKS_PAGE)))
+        self.added_actions.hide()
+        layout.addWidget(self.added_actions)
 
         # 底部操作栏
         footer = QHBoxLayout()
@@ -536,14 +488,37 @@ class MainWindow(QMainWindow):
         self.update_folder_label()
         footer.addWidget(self.folder_label, 1)
 
-        self.cancel_button = button(t("dl_btn_cancel", "取消下载"), self.cancel_download)
-        self.cancel_button.hide()
-        footer.addWidget(self.cancel_button)
-
-        self.download_button = button(t("dl_btn_download", "下载所选视频"), self.start_download, "Primary")
+        self.download_button = button(t("task_add"), self.start_download, "Primary")
         self.download_button.setEnabled(False)
         footer.addWidget(self.download_button)
         layout.addLayout(footer)
+
+    def show_page(self, index):
+        self.pages.setCurrentIndex(index)
+        self.navigation.button(index).setChecked(True)
+
+    def continue_adding(self):
+        self.clear_url()
+        self.added_actions.hide()
+        self.url_input.setFocus()
+
+    def _build_tasks_page(self):
+        layout = self.page(t("task_heading"), t("task_subtitle"), scroll=True)
+        toolbar = QHBoxLayout()
+        self.task_summary = label("", "Muted", True)
+        toolbar.addWidget(self.task_summary, 1)
+        toolbar.addWidget(button(t("task_new"), lambda: self.show_page(self.NEW_PAGE), "Primary"))
+        layout.addLayout(toolbar)
+        self.resume_queue_button = button(t("task_resume_queue"), self.downloads.resume_queue, "Primary")
+        layout.addWidget(self.resume_queue_button)
+        self.task_list = TaskList(self.downloads)
+        self.task_list.cancel_requested.connect(self.downloads.cancel)
+        self.task_list.retry_requested.connect(self.retry_task)
+        self.task_list.play_requested.connect(self.play_task)
+        self.task_list.reveal_requested.connect(self.reveal_task)
+        layout.addWidget(self.task_list)
+        layout.addWidget(button(t("task_all_history"), lambda: self.show_page(self.HISTORY_PAGE)))
+        layout.addStretch()
 
     def _build_history_page(self):
         layout = self.page(t("hist_heading", "下载记录"),
@@ -610,6 +585,10 @@ class MainWindow(QMainWindow):
         self.history.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.history.customContextMenuRequested.connect(self.show_history_context_menu)
         self.history.itemDoubleClicked.connect(self.on_history_double_clicked)
+        self.history_delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Delete), self.history)
+        self.history_delete_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.history_delete_shortcut.setAutoRepeat(False)
+        self.history_delete_shortcut.activated.connect(self.delete_selected)
         layout.addWidget(self.history, 1)
 
         self.history_detail = label(t("hist_empty", "尚无下载记录。"), "Muted", True)
@@ -651,7 +630,7 @@ class MainWindow(QMainWindow):
         pref_grid.setHorizontalSpacing(14)
         pref_grid.setVerticalSpacing(12)
 
-        pref_grid.addWidget(label(t("set_theme_label", "界面主题") + "："), 0, 0)
+        pref_grid.addWidget(label(t("set_theme_label", "界面主题") + "：", wrap=True), 0, 0)
         self.theme_input = combo_box("界面主题")
         self.theme_input.addItem(t("set_theme_system", "跟随操作系统"), "system")
         self.theme_input.addItem(t("set_theme_light", "浅色模式"), "light")
@@ -663,7 +642,7 @@ class MainWindow(QMainWindow):
         self.theme_input.currentIndexChanged.connect(self.on_theme_changed)
         pref_grid.addWidget(self.theme_input, 0, 1)
 
-        pref_grid.addWidget(label(t("set_lang_label", "界面语言") + "："), 0, 2)
+        pref_grid.addWidget(label(t("set_lang_label", "界面语言") + "：", wrap=True), 0, 2)
         self.language_input = combo_box("界面语言")
         self.language_input.addItem(t("set_lang_system", "跟随操作系统"), "system")
         self.language_input.addItem(t("set_lang_zh", "简体中文"), "zh")
@@ -675,7 +654,7 @@ class MainWindow(QMainWindow):
         self.language_input.currentIndexChanged.connect(self.on_language_changed)
         pref_grid.addWidget(self.language_input, 0, 3)
 
-        pref_grid.addWidget(label(t("set_sec_window", "关闭窗口时") + "："), 1, 0)
+        pref_grid.addWidget(label(t("set_sec_window", "关闭窗口时") + "：", wrap=True), 1, 0)
         self.close_action_input = combo_box("关闭窗口时的操作")
         self.close_action_input.addItem(t("set_close_minimize", "最小化到任务栏（继续下载）"), "minimize")
         self.close_action_input.addItem(t("set_close_exit", "退出软件"), "exit")
@@ -687,6 +666,43 @@ class MainWindow(QMainWindow):
         self.close_prompt_input.setChecked(self.store.get_setting("confirm_close", True))
         self.close_prompt_input.toggled.connect(lambda _: self.auto_save())
         pref_grid.addWidget(self.close_prompt_input, 1, 2, 1, 2)
+
+        pref_grid.addWidget(label(t("set_sound_label", "完成提醒") + "：", wrap=True), 2, 0)
+        self.completion_sound_input = QCheckBox(t("set_completion_sound", "下载完成后播放提示音"))
+        self.completion_sound_input.setChecked(self.store.get_setting("completion_sound", True))
+        self.completion_sound_input.setToolTip(t(
+            "set_completion_sound_note", "校验画面、声音和时长通过后提醒，最小化时也会播放。"
+        ))
+        self.completion_sound_input.toggled.connect(self.on_completion_sound_changed)
+        pref_grid.addWidget(self.completion_sound_input, 2, 1, 1, 3)
+
+        self.completion_notification_input = QCheckBox(t("set_completion_notification"))
+        self.completion_notification_input.setChecked(self.store.get_setting("completion_notification", False))
+        self.completion_notification_input.setToolTip(t("set_completion_notification_note"))
+        self.completion_notification_input.toggled.connect(self.on_completion_notification_changed)
+        pref_grid.addWidget(self.completion_notification_input, 3, 1, 1, 3)
+
+        pref_grid.addWidget(label(t("set_parallel") + "：", wrap=True), 4, 0)
+        self.parallel_input = QSpinBox()
+        self.parallel_input.setRange(1, 5)
+        self.parallel_input.setValue(self.downloads.max_parallel)
+        self.parallel_input.setAccessibleName(t("set_parallel"))
+        self.parallel_input.valueChanged.connect(self.downloads.set_max_parallel)
+        pref_grid.addWidget(self.parallel_input, 4, 1)
+        pref_grid.addWidget(label(t("set_retries") + "：", wrap=True), 4, 2)
+        self.retry_count_input = QSpinBox()
+        self.retry_count_input.setRange(0, 10)
+        self.retry_count_input.setValue(bounded_int(self.store.get_setting("auto_retry_count", 3), 3, 0, 10))
+        self.retry_count_input.setAccessibleName(t("set_retries"))
+        self.retry_count_input.valueChanged.connect(lambda value: self.store.set_setting("auto_retry_count", value))
+        pref_grid.addWidget(self.retry_count_input, 4, 3)
+        pref_grid.addWidget(label(t("set_retries_note"), "Muted", True), 5, 0, 1, 4)
+
+        for control in (self.theme_input, self.language_input, self.close_action_input):
+            control.setMinimumContentsLength(12)
+            control.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            control.setToolTip(control.currentText())
+            control.currentTextChanged.connect(control.setToolTip)
 
         pref_grid.setColumnStretch(1, 1)
         pref_grid.setColumnStretch(3, 1)
@@ -787,6 +803,10 @@ class MainWindow(QMainWindow):
         self.store.set_setting("theme", theme)
         self.apply_theme(theme)
 
+    def on_completion_sound_changed(self, enabled):
+        self.store.set_setting("completion_sound", enabled)
+        self.settings_notice.setText(t("set_auto_saved", "设置已自动保存"))
+
     def on_language_changed(self, index):
         lang = self.language_input.itemData(index)
         self.store.set_setting("language", lang)
@@ -809,13 +829,22 @@ class MainWindow(QMainWindow):
             ok_btn.setText(t("btn_ok", "确定"))
         dialog.exec()
 
-    def play_downloaded(self):
-        if self.last_downloaded_path and Path(self.last_downloaded_path).is_file():
-            os.startfile(self.last_downloaded_path)
+    def play_task(self, job_id):
+        job = self.downloads.get(job_id)
+        path = job.get("result", {}).get("path") if job else None
+        if path and Path(path).is_file():
+            os.startfile(path)
+        else:
+            QMessageBox.information(self, "VidVeya", t("hist_file_missing"))
 
-    def reveal_downloaded(self):
-        if self.last_downloaded_path and Path(self.last_downloaded_path).is_file():
-            subprocess.Popen([str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"), "/select,", str(self.last_downloaded_path)])
+    def reveal_task(self, job_id):
+        job = self.downloads.get(job_id)
+        path = job.get("result", {}).get("path") if job else None
+        if path and Path(path).is_file():
+            subprocess.Popen([str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"),
+                              "/select,", path])
+        else:
+            QMessageBox.information(self, "VidVeya", t("hist_file_missing"))
 
     def directory(self):
         return self.store.get_setting("directory", str(downloads_dir()))
@@ -844,13 +873,11 @@ class MainWindow(QMainWindow):
             self.inspection = None
             self.parse_button.setText(t("dl_analyze", "解析视频"))
             self.parse_button.setEnabled(self.ready)
-        if worker is self.downloader:
-            self.downloader = None
-            self.cancel_button.hide()
         if worker in self.workers:
             self.workers.remove(worker)
         self.update_actions()
         worker.deleteLater()
+        self.maybe_finish_close()
 
     def changeEvent(self, event):
         if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
@@ -1124,7 +1151,8 @@ class MainWindow(QMainWindow):
         self.visible_options = [item for item in options if (item.resolution <= 720) == self.quick]
         self.formats.setRowCount(len(self.visible_options))
         for row, option in enumerate(self.visible_options):
-            values = (option.label, f"{option.container.upper()} · {codec_text(option.video_codec)}",
+            values = (f"{option.label} · {option.width}×{option.height}",
+                      f"{option.container.upper()} · {codec_text(option.video_codec)}",
                       f"{option.fps:g} fps" if option.fps else "—", size_text(option.estimated_bytes))
             for column, text in enumerate(values):
                 item = QTableWidgetItem(text)
@@ -1140,228 +1168,133 @@ class MainWindow(QMainWindow):
             target = next((index for index, item in enumerate(self.visible_options) if item.resolution == (720 if self.quick else 1080) and item.container == "mp4"), 0)
             self.formats.selectRow(target)
             self.sync_chip_selection()
-        self.format_hint.setText("大小为估计值，实际下载后可能不同。高分辨率 AV1 / VP9 文件需要播放器支持相应编码。" if options
-                                 else "解析后显示源视频实际提供的清晰度。")
+        self.format_hint.setText(t("dl_hint_av1") if options else t("dl_hint_idle"))
         if options and not self.visible_options:
-            self.format_hint.setText("源视频未提供此档位，请切换下载方式。")
+            self.format_hint.setText(t("dl_hint_none"))
         self.update_actions()
 
     def update_actions(self):
         self.sync_chip_selection()
-        if not hasattr(self, "download_button"):
-            return
-        is_enabled = self.ready and self.video is not None and self.formats.currentRow() >= 0 and self.downloader is None
-        self.download_button.setEnabled(is_enabled)
-        if self.video is not None and self.formats.currentRow() >= 0:
-            self.download_button.setText(t("dl_btn_download_quality", "立即下载所选清晰度"))
-        else:
-            self.download_button.setText(t("dl_btn_download", "下载所选视频"))
+        if hasattr(self, "download_button"):
+            self.download_button.setEnabled(self.ready and self.video is not None
+                                            and self.formats.currentRow() >= 0 and not self.closing)
+            self.download_button.setText(t("task_add"))
 
     def start_download(self):
-        if not self.ready or not self.video or self.downloader is not None:
+        if not self.ready or not self.video or self.closing:
             return
         row = self.formats.currentRow()
-        if row < 0 or row >= len(self.visible_options):
-            return
-        self.start_job(self.video, self.visible_options[row].to_dict())
+        if 0 <= row < len(self.visible_options):
+            self.start_job(self.video, self.visible_options[row].to_dict())
 
     def start_job(self, info, option):
-        if self.downloader is not None or not self.ready:
+        if not self.ready or self.closing:
             return
-        job = {"id": str(uuid.uuid4()), "created": timestamp(), "url": info["url"], "title": info["title"],
-               "option": option, "directory": self.directory(), "state": "starting", "error": ""}
-        self.current_job = job
-        self.store.save_job(job)
-        self.refresh_history()
-        self.show_notice("")
-        if hasattr(self, "done_actions_widget"):
-            self.done_actions_widget.hide()
-        if hasattr(self, "added_actions"):
-            self.added_actions.show()
-        self.progress_card.show()
-        self.progress_title.setText(t("dl_progress_starting", "准备下载") + " · " + job["title"])
-        self.progress_value.setText(t("dl_progress_starting_val", "准备中"))
-        self.progress_bar.setRange(0, 0)
-        self.progress_meta.setText(t("dl_progress_refreshing", "正在刷新所选格式和音频"))
-        self.cancel_button.setText(t("dl_btn_cancel", "取消下载"))
-        self.cancel_button.setEnabled(True)
-        self.cancel_button.show()
+        self.downloads.set_ready(self.ready)
+        job, created = self.downloads.enqueue(info, option, self.directory())
+        self.added_notice.setText(t("task_added" if created else "task_duplicate").format(title=job["title"]))
+        self.added_actions.show()
+        if not created:
+            self.focus_task(job["id"])
 
-        if hasattr(self, "sidebar_mini_task"):
-            self.sidebar_mini_task.show()
-            self.mini_title.setText(job["title"][:20] + ("…" if len(job["title"]) > 20 else ""))
-            self.mini_progress.setRange(0, 0)
-            self.mini_status.setText(t("dl_progress_starting_val", "准备中"))
+    def focus_task(self, job_id):
+        self.show_page(self.TASKS_PAGE)
+        self.task_list.select(job_id, focus=True)
+        card = self.task_list.cards.get(job_id)
+        if card:
+            self.pages.widget(self.TASKS_PAGE).ensureWidgetVisible(card)
 
-        worker = WorkerThread({"command": "download", "job_id": job["id"], "url": job["url"],
-                               "option_key": option["key"], "directory": job["directory"],
-                               "proxy": self.store.get_setting("proxy", ""),
-                               "use_auth": self.store.get_setting("use_auth", False)}, self)
-        self.downloader = worker
-        self.workers.append(worker)
-        worker.event_received.connect(self.show_progress)
-        worker.result_received.connect(self.download_done)
-        worker.error_received.connect(self.download_error)
-        worker.cancelled_signal.connect(self.download_cancelled)
-        worker.finished.connect(lambda: self.worker_finished(worker))
-        worker.start()
-        self.update_actions()
-
-    def show_progress(self, event):
-        if not self.current_job or self.closing:
+    def retry_task(self, job_id):
+        if not self.ready or self.closing:
             return
-        state = event.get("state", "downloading")
-        if state != self.current_job["state"]:
-            self.current_job["state"] = state
-            self.store.save_job(self.current_job)
+        self.downloads.set_ready(self.ready)
+        result = self.downloads.retry(job_id)
+        if result:
+            self.focus_task(result[0]["id"])
+
+    def on_job_changed(self, job_id):
+        job = self.downloads.get(job_id)
+        if not job:
+            return
+        key = (job["state"], job.get("attempts"), job.get("delete_requested"), job.get("error"))
+        if self._history_states.get(job_id) != key:
+            self._history_states[job_id] = key
             self.refresh_history()
 
-        p1 = t("step_prep", "准备")
-        p2 = t("step_download", "下载")
-        p3 = t("step_merge", "合并")
-        p4 = t("dl_progress_verifying_val", "校验")
-        p5 = t("step_done", "完成")
-        step_map = {
-            "starting": f"① [{p1}]  →  ② {p2}  →  ③ {p3}  →  ④ {p4}  →  ⑤ {p5}",
-            "downloading": f"① {p1}  →  ② [{p2}]  →  ③ {p3}  →  ④ {p4}  →  ⑤ {p5}",
-            "merging": f"① {p1}  →  ② {p2}  →  ③ [{p3}]  →  ④ {p4}  →  ⑤ {p5}",
-            "verifying": f"① {p1}  →  ② {p2}  →  ③ {p3}  →  ④ [{p4}]  →  ⑤ {p5}",
-            "completed": f"① {p1}  →  ② {p2}  →  ③ {p3}  →  ④ {p4}  →  ⑤ [{p5}]",
-        }
-        if hasattr(self, "step_indicator"):
-            self.step_indicator.setText(step_map.get(state, self.step_indicator.text()))
+    def on_job_removed(self, job_id):
+        self._history_states.pop(job_id, None)
+        self.refresh_history()
 
-        if hasattr(self, "sidebar_mini_task"):
-            self.sidebar_mini_task.show()
-            if self.current_job:
-                self.mini_title.setText(self.current_job["title"][:20] + ("…" if len(self.current_job["title"]) > 20 else ""))
+    def on_task_completed(self, job_id):
+        if self.closing:
+            return
+        job = self.downloads.get(job_id)
+        if not job or job["state"] != "completed":
+            return
+        self.completion_notifier.notify(job["title"], job["option"], job.get("result", {}).get("path", ""))
+        if not self.store.get_setting("completion_sound", True):
+            return
+        now = time.monotonic()
+        if now - self._last_sound_at >= 1:
+            self._last_sound_at = now
+            play_completion_sound()
 
-        self.progress_title.setText(STATE_LABELS.get(state, state) + " · " + self.current_job["title"])
-        percent = event.get("percent")
-        if percent is None:
-            self.progress_bar.setRange(0, 0)
-            caption = {
-                "starting": t("dl_progress_starting_val", "准备中"),
-                "merging": t("dl_progress_merging_val", "合并中"),
-                "verifying": t("dl_progress_verifying_val", "校验中"),
-            }.get(state, t("dl_progress_downloading_val", "下载中"))
-            self.progress_value.setText(caption)
-            if hasattr(self, "mini_progress"):
-                self.mini_progress.setRange(0, 0)
-                self.mini_status.setText(caption)
-        else:
-            value = max(0, min(99, int(percent)))
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(value)
-            self.progress_value.setText(f"{value}%")
-            if hasattr(self, "mini_progress"):
-                self.mini_progress.setRange(0, 100)
-                self.mini_progress.setValue(value)
-                self.mini_status.setText(f"{value}%")
+    def on_completion_notification_changed(self, enabled):
+        self.store.set_setting("completion_notification", enabled)
+        self.completion_notifier.set_enabled(enabled)
 
-        if state == "downloading":
-            details = t("dl_downloaded", "已下载") + " " + size_text(event.get("downloaded_bytes", 0))
-            if event.get("total_bytes"):
-                details += " / " + size_text(event["total_bytes"])
+    def show_completed_tasks(self):
+        if self.closing:
+            return
+        self.showNormal()
+        self.show_page(self.TASKS_PAGE)
+        self.raise_()
+        self.activateWindow()
+
+    def open_completed_file(self, path):
+        self.open_completed_path(path, reveal=False)
+
+    def open_completed_folder(self, path):
+        self.open_completed_path(path, reveal=True)
+
+    def open_completed_path(self, path, *, reveal):
+        if self.closing:
+            return
+        try:
+            if not path or not Path(path).is_file():
+                QMessageBox.information(self, "VidVeya", t("hist_file_missing"))
+                return
+            if reveal:
+                subprocess.Popen([str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"),
+                                  "/select,", path])
             else:
-                details += "  ·  " + t("dl_total_unknown", "总大小待确定")
-            if event.get("speed"):
-                details += "  ·  " + size_text(event["speed"]) + "/s"
-            if event.get("eta") is not None:
-                details += "  ·  " + t("dl_eta", "剩余") + " " + duration_text(event["eta"])
-            self.progress_meta.setText(details)
-        else:
-            self.progress_meta.setText({
-                "starting": t("dl_progress_refreshing", "正在刷新所选格式和音频"),
-                "merging": t("dl_progress_merging_meta", "正在无损合并画面与声音"),
-                "verifying": t("dl_progress_verifying_meta", "正在检查视频轨、音频轨和时长"),
-            }.get(state, ""))
+                os.startfile(path)
+        except OSError:
+            QMessageBox.information(self, "VidVeya", t("notification_open_failed"))
 
-    def receipt(self, job):
-        return Path(job["directory"]) / ".vidveya-tmp" / f"{job['id']}.completed.json"
+    def update_task_summary(self):
+        summary = self.downloads.summary()
+        count = summary["running"] + summary["waiting"]
+        caption = t("task_summary").format(**summary)
+        speed = t("task_speed").format(speed=size_text(summary["speed"]) + "/s")
+        self.sidebar_mini_task.setText(caption + "\n" + speed)
+        self.sidebar_mini_task.setVisible(count > 0)
+        self.task_summary.setText(caption + " · " + speed + " · " +
+                                  t("task_parallel").format(count=self.downloads.max_parallel))
+        self.navigation.button(self.TASKS_PAGE).setText(t("nav_tasks") + (f"  {count}" if count else ""))
+        self.resume_queue_button.setVisible(self.downloads.paused and summary["waiting"] > 0)
+        self.resume_queue_button.setEnabled(self.ready)
 
-    def recover_receipt(self, job):
-        path = self.receipt(job)
-        try:
-            result = json.loads(path.read_text(encoding="utf-8"))
-            final = Path(result["path"])
-            if final.is_file() and final.parent.resolve() == Path(job["directory"]).resolve() and result["verification"].get("audio_channels", 0) > 0:
-                job.update(state="completed", result=result, error="")
-                self.store.save_job(job)
-                path.unlink()
-                return True
-        except (OSError, ValueError, KeyError, TypeError):
-            pass
-        return False
-
-    def _restore_receipts(self):
-        for job in self.store.jobs():
-            self.recover_receipt(job)
-
-    def download_done(self, result):
-        if not self.current_job:
+    def confirm_delete(self, job_id):
+        job = self.downloads.get(job_id)
+        if not job or job.get("delete_requested"):
             return
-        self.current_job.update(state="completed", result=result, error="")
-        self.store.save_job(self.current_job)
-        self.receipt(self.current_job).unlink(missing_ok=True)
-        self.last_downloaded_path = result.get("path")
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(100)
-        self.progress_value.setText("100%")
-        p1 = t("step_prep", "准备")
-        p2 = t("step_download", "下载")
-        p3 = t("step_merge", "合并")
-        p4 = t("dl_progress_verifying_val", "校验")
-        p5 = t("step_done", "完成")
-        if hasattr(self, "step_indicator"):
-            self.step_indicator.setText(f"① {p1}  →  ② {p2}  →  ③ {p3}  →  ④ {p4}  →  ⑤ [{p5}]")
-        self.progress_title.setText(t("dl_progress_completed", "下载完成 · 已验证画面与声音"))
-        self.progress_meta.setText(size_text(result["verification"]["bytes"]) + "  ·  " + Path(result["path"]).name)
-        if hasattr(self, "done_actions_widget"):
-            self.done_actions_widget.show()
-        if hasattr(self, "sidebar_mini_task"):
-            self.sidebar_mini_task.hide()
-        self.current_job = None
-        self.refresh_history()
-
-    def finish_unsuccessful(self, state, message):
-        if not self.current_job:
-            return
-        job = self.current_job
-        if self.recover_receipt(job):
-            self.download_done(job["result"])
-            return
-        job.update(state=state, error=message)
-        self.store.save_job(job)
-        try:
-            cleanup_staging(Path(job["directory"]), job["id"])
-        except (OSError, ValueError, UserError):
-            pass
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_value.setText(STATE_LABELS[state])
-        self.progress_title.setText(STATE_LABELS[state])
-        self.progress_meta.setText("可在下载记录中重新下载")
-        self.show_notice(message)
-        if hasattr(self, "done_actions_widget"):
-            self.done_actions_widget.hide()
-        if hasattr(self, "sidebar_mini_task"):
-            self.sidebar_mini_task.hide()
-        self.current_job = None
-        self.refresh_history()
-
-    def download_error(self, message):
-        self.finish_unsuccessful("failed", message)
-
-    def cancel_download(self):
-        if self.downloader:
-            self.cancel_button.setEnabled(False)
-            self.cancel_button.setText("正在取消…")
-            self.downloader.cancel()
-
-    def download_cancelled(self):
-        self.finish_unsuccessful("interrupted" if self.closing else "cancelled",
-                                 "应用退出，任务已中断。" if self.closing else "下载已取消，可在下载记录中重新下载。")
+        message = t("task_delete_confirm_active" if job["state"] in ACTIVE_STATES else "hist_confirm_delete_msg")
+        reply = QMessageBox.question(self, t("hist_confirm_delete_title"), job.get("title", "") + "\n\n" + message,
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                     QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            self.downloads.delete(job_id)
 
     def _update_header_labels(self):
         if not hasattr(self, "history"):
@@ -1478,7 +1411,7 @@ class MainWindow(QMainWindow):
         elif col == 2:
             state_priority = {
                 "downloading": 1, "merging": 2, "verifying": 3, "starting": 4,
-                "completed": 5, "failed": 6, "cancelled": 7, "interrupted": 8,
+                "completed": 5, "failed": 6, "cancelled": 7, "interrupted": 8, "queued": -2, "retry_wait": -1,
             }
             jobs.sort(key=lambda j: (state_priority.get(j.get("state", ""), 99), (j.get("title") or "").lower()), reverse=is_reverse)
         elif col == 3:
@@ -1501,7 +1434,7 @@ class MainWindow(QMainWindow):
                     caption += t("hist_shown_records", "（显示最近 {shown} 条）").format(shown=len(self.history_jobs))
                 self.history_count_label.setText(caption)
         if hasattr(self, "clear_history_button"):
-            self.clear_history_button.setEnabled(any(job["state"] not in ACTIVE_STATES for job in self.history_jobs))
+            self.clear_history_button.setEnabled(self.store.has_finished_jobs())
         self._render_history_table()
 
     def _render_history_table(self):
@@ -1515,7 +1448,7 @@ class MainWindow(QMainWindow):
             self.history.setRowCount(len(self.display_jobs))
             for row, job in enumerate(self.display_jobs):
                 state = job.get("state", "")
-                state_text = STATE_LABELS.get(state, state)
+                state_text = t(f"state_{state}", STATE_LABELS.get(state, state))
                 created_str = format_local_datetime(job.get("created", ""))
 
                 opt = job.get("option", {})
@@ -1576,8 +1509,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, "play_history_button"):
             self.play_history_button.setEnabled(has_file)
         if hasattr(self, "delete_history_button"):
-            self.delete_history_button.setEnabled(bool(job and job["state"] not in ACTIVE_STATES))
-        self.retry_button.setEnabled(bool(job and job["state"] in {"completed", "failed", "cancelled", "interrupted"} and not self.downloader))
+            self.delete_history_button.setEnabled(bool(job and not job.get("delete_requested")))
+        self.retry_button.setEnabled(bool(job and job["state"] in {"completed", "failed", "cancelled", "interrupted"} and not self.closing))
         if job:
             self.history_detail.setText(job.get("error") or job.get("result", {}).get("path", t("hist_in_progress", "任务正在进行")))
         elif not self.display_jobs:
@@ -1602,28 +1535,16 @@ class MainWindow(QMainWindow):
 
     def retry_selected(self):
         job = self.selected_job()
-        if job and not self.downloader:
-            self.pages.setCurrentIndex(0)
-            self.navigation.button(0).setChecked(True)
-            self.start_job({"url": job["url"], "title": job["title"]}, job["option"])
+        if job:
+            self.retry_task(job["id"])
 
     def delete_selected(self):
         job = self.selected_job()
-        if not job or job["state"] in ACTIVE_STATES:
-            return
-        reply = QMessageBox.question(
-            self,
-            t("hist_confirm_delete_title", "删除下载记录"),
-            t("hist_confirm_delete_msg", "确定要从记录中移除此项吗？\n（不会删除已下载的文件）"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if reply == QMessageBox.StandardButton.Yes:
-            self.store.delete_job(job["id"])
-            self.refresh_history()
+        if job:
+            self.confirm_delete(job["id"])
 
     def clear_all_history(self):
-        if not any(job["state"] not in ACTIVE_STATES for job in self.history_jobs):
+        if not self.store.has_finished_jobs():
             return
         reply = QMessageBox.question(
             self,
@@ -1634,6 +1555,7 @@ class MainWindow(QMainWindow):
         )
         if reply == QMessageBox.StandardButton.Yes:
             self.store.clear_jobs()
+            self.downloads.forget_finished()
             self.refresh_history()
 
     def show_history_context_menu(self, pos):
@@ -1652,15 +1574,15 @@ class MainWindow(QMainWindow):
 
         play_act = menu.addAction(t("hist_menu_play", "▶  播放视频"))
         play_act.setEnabled(has_file)
-        play_act.triggered.connect(self.play_selected_history)
+        play_act.triggered.connect(lambda: self.play_task(job["id"]))
 
         reveal_act = menu.addAction(t("hist_menu_reveal", "📂  打开所在文件夹"))
         reveal_act.setEnabled(has_file)
-        reveal_act.triggered.connect(self.reveal_selected)
+        reveal_act.triggered.connect(lambda: self.reveal_task(job["id"]))
 
         retry_act = menu.addAction(t("hist_menu_retry", "↺  重新下载"))
-        retry_act.setEnabled(bool(job["state"] in {"completed", "failed", "cancelled", "interrupted"} and not self.downloader))
-        retry_act.triggered.connect(self.retry_selected)
+        retry_act.setEnabled(bool(job["state"] in {"completed", "failed", "cancelled", "interrupted"} and not self.closing))
+        retry_act.triggered.connect(lambda: self.retry_task(job["id"]))
 
         menu.addSeparator()
 
@@ -1673,8 +1595,8 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
 
         delete_act = menu.addAction(t("hist_menu_delete", "🗑  删除此记录"))
-        delete_act.setEnabled(job["state"] not in ACTIVE_STATES)
-        delete_act.triggered.connect(self.delete_selected)
+        delete_act.setEnabled(not job.get("delete_requested"))
+        delete_act.triggered.connect(lambda: self.confirm_delete(job["id"]))
 
         try:
             menu.exec(self.history.viewport().mapToGlobal(pos))
@@ -1688,7 +1610,7 @@ class MainWindow(QMainWindow):
         path = Path(job.get("result", {}).get("path", "")) if job.get("result") else None
         if path and path.is_file():
             self.play_selected_history()
-        elif not self.downloader and job.get("state") in {"completed", "failed", "cancelled", "interrupted"}:
+        elif not self.closing and job.get("state") in {"completed", "failed", "cancelled", "interrupted"}:
             self.retry_selected()
 
     def choose_directory(self):
@@ -1787,6 +1709,8 @@ class MainWindow(QMainWindow):
             item.setForeground(QColor("#10B981" if status["ok"] else "#E53935"))
             self.component_table.setItem(row, 1, item)
         self.ready = bool(result) and all(status["ok"] for status in result.values())
+        self.downloads.set_ready(self.ready)
+        self.update_task_summary()
         self.health_label.setText(t("nav_ready", "●  下载组件就绪") if self.ready else t("nav_not_ready", "●  请检查内置组件"))
         self.check_button.setEnabled(True)
         self.check_button.setText(t("set_btn_recheck", "重新检查"))
@@ -1797,6 +1721,7 @@ class MainWindow(QMainWindow):
 
     def component_error(self, message):
         self.ready = False
+        self.downloads.set_ready(False)
         self.health_label.setText(t("nav_check_failed", "●  组件检查失败"))
         self.check_button.setEnabled(True)
         self.check_button.setText(t("set_btn_recheck", "重新检查"))
@@ -1836,7 +1761,10 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         if self.closing:
-            event.accept()
+            if self.downloads.active or self.workers:
+                event.ignore()
+            else:
+                event.accept()
             return
         action = "exit" if self._exit_requested else self.store.get_setting("close_action", "minimize")
         remember = False
@@ -1851,11 +1779,12 @@ class MainWindow(QMainWindow):
             event.ignore()
             self.showMinimized()
             return
-        if self.downloader and self.downloader.isRunning():
+        counts = self.downloads.summary()
+        if counts["running"] or counts["waiting"]:
             answer = QMessageBox.question(
                 self,
                 t("dialog_exit_confirm_title", "确认退出"),
-                t("dialog_downloading_exit_text", "当前有下载正在进行中，退出将取消当前任务。\n确定要退出吗？"),
+                t("task_exit_confirm").format(**counts),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -1865,15 +1794,21 @@ class MainWindow(QMainWindow):
         if remember:
             self.remember_close_action("exit")
         self.closing = True
+        self.completion_notifier.shutdown()
+        self.centralWidget().setEnabled(False)
+        self.downloads.shutdown()
         for worker in list(self.workers):
             worker.cancel()
-        for worker in list(self.workers):
-            worker.wait(10000)
-        if self.current_job:
-            self.finish_unsuccessful("interrupted", "应用退出，任务已中断。可以重新下载。")
         if self.thumbnail_reply:
             self.thumbnail_reply.abort()
-        event.accept()
+        if self.downloads.active or self.workers:
+            event.ignore()
+        else:
+            event.accept()
+
+    def maybe_finish_close(self):
+        if self.closing and not self.downloads.active and not self.workers:
+            QTimer.singleShot(0, self.close)
 
     def remember_close_action(self, action):
         self.store.set_setting("close_action", action)

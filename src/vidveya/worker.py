@@ -2,6 +2,7 @@ import json
 import sys
 
 from .engine import analyze, download, friendly_error
+from .failures import failure_details
 from .media import diagnostics
 
 
@@ -31,7 +32,7 @@ def main():
         emit({"event": "result", "data": result})
         return 0
     except Exception as error:
-        emit({"event": "error", "message": friendly_error(error)})
+        emit({"event": "error", **failure_details(error, friendly_error(error))})
         return 1
 
 

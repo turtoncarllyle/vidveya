@@ -6,7 +6,7 @@ import uuid
 import pytest
 
 from vidveya.engine import cleanup_staging, staging_dir
-from vidveya.models import ACTIVE_STATES
+from vidveya.models import ACTIVE_STATES, RUNNING_STATES
 from vidveya.paths import publish_file, safe_name
 from vidveya.store import Store, timestamp
 
@@ -39,7 +39,8 @@ def test_deleting_active_records_preserves_restart_recovery(tmp_path):
     reopened = Store(db)
     reopened.recover()
     assert {job["id"] for job in reopened.jobs()} == ACTIVE_STATES
-    assert all(job["state"] == "interrupted" for job in reopened.jobs())
+    assert all(job["state"] == ("interrupted" if job["id"] in RUNNING_STATES else job["id"])
+               for job in reopened.jobs())
     reopened.close()
 
 

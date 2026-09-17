@@ -20,27 +20,45 @@ Both packages include Qt, yt-dlp, yt-dlp-ejs, FFmpeg, ffprobe, and Deno. The app
 1. Open VidVeya.
 2. Paste a `watch`, `youtu.be`, or `shorts` URL and choose **Analyze video**.
 3. Use **Quick download** for 720p and below, or **HD download** for available 1080p, 2K, 4K, and 8K formats.
-4. Choose **Download selected video**.
+4. Choose **Add Download Task**, then add another video or open **Download Tasks** to track progress.
+
+Quality cards show actual pixel dimensions, frame rate, format/codec, and estimated size, for example `1080P · 1920×1080 · 30 FPS`. Portrait dimensions retain their orientation, such as `1080×1920`. The `≈` marker indicates the estimated combined video/audio size; unavailable estimates show “Size TBD”.
 
 The download card shows a progress bar, percentage, transferred/total size, speed, and estimated time remaining. When the total size is unknown, the bar shows ongoing activity. Merging and verification show their current stage; 100% is displayed only after verification succeeds.
 
 Every option must have audio. Separate streams are merged automatically, then the result is checked for video, audio, selected resolution, and duration. A missing audio track or failed verification always fails the job; a silent source remains silent.
 
+A system sound plays once after a download passes verification, including while minimized. Disable **Play a sound when a download completes** under **Settings → Completion alerts** to turn it off; the preference saves automatically. Failed or cancelled downloads do not play the success sound. Playback follows Windows sound and volume settings.
+
+**Show a desktop notification when a download completes** is **off by default** and can be configured separately from sound. When enabled, a notification at the bottom right shows the video title and quality after verification, even while minimized. Each video has **Open file** and **Open Folder** buttons to launch the default player or select the file in Explorer. **View tasks** returns to Download Tasks. It dismisses after about 8 seconds without taking focus. Completions within one second share a notification showing up to 3 videos, with remaining results available on the task page.
+
+### Multiple downloads and automatic retries (0.1.8)
+
+- Run **3 tasks** concurrently by default; additional tasks wait in FIFO order. Settings allow **1–5** concurrent tasks. Increasing the limit fills free slots immediately; lowering it lets existing tasks finish. Analyzing another URL does not interrupt downloads.
+- Download Tasks groups running tasks, waiting tasks, and the latest 3 results, with independent progress, speed, time remaining, merging, and verification. Older results remain in History. Adding the same unfinished video, format, and directory selects the existing task instead of creating a duplicate.
+- The default is **3 extra retries**, or at most **4 attempts**. Set **0–10** extra retries; 0 disables task-level automatic retries. Changes apply to newly added tasks and new tasks created by manual retry.
+- Timeouts, interrupted connections, temporary network failures, and HTTP 408/429/5xx can retry after **10, 30, then 60 seconds**; later waits remain 60 seconds. HTTP 429 waits at least 60 seconds and honors a longer server delay. Waiting retries release their concurrency slot and join the queue tail when due.
+- Permission, cookie, format, disk, component, and media validation failures require manual retry after resolving the cause. Automatic retries update the same record; manual retries create a new task. Each attempt resolves fresh media URLs for the original quality and destination. yt-dlp request/fragment retries remain separate from this setting.
+- Cancel stops further retries and keeps the record. Restarting never starts downloads automatically: choose **Resume Queue** for waiting tasks or retry interrupted tasks individually.
+- Completion sounds play only after media verification; completions within one second share one notification.
+
 ### Closing the window
 
-In **Settings → When closing the window**, choose **Minimize** or **Exit**, then save. By default, closing shows a prompt with minimize selected. Check **Remember my choice, do not ask again** in that prompt, or disable prompts in Settings. Minimizing keeps downloads running; use the taskbar to restore the window. The sidebar **Exit** action always allows you to quit. Exiting during a download requires confirmation and saves the interrupted job in history for retry.
+In **Settings → When closing the window**, choose **Minimize** or **Exit**; changes save automatically. By default, closing shows a prompt with minimize selected. Check **Remember my choice, do not ask again**, or disable prompts in Settings. Minimizing keeps all tasks running; use the taskbar to restore the window. Exiting stops scheduling and all associated worker processes, preserves the queue, and records interrupted tasks for manual resume or retry after restarting.
 
 ### Appearance, language, and shortcuts
 
 Choose light, dark, or system theme in **Settings → Appearance & Language**, or use the sidebar theme toggle. Select Simplified Chinese, English, or system language and restart the app to apply it. Some download status messages, diagnostics, and dialogs remain in Chinese.
 
-The sidebar shows the current download's progress even when viewing history or settings. Completed downloads have **Play Video** and **Open Folder** shortcuts; history also provides playback.
+The sidebar summarizes running and queued counts and total speed; click it to open Download Tasks. Completed downloads have **Play Video** and **Open Folder** shortcuts; history also provides playback.
 
-### Download history (0.1.7)
+### Download history and the Delete key (0.1.8)
 
 - Click the Video, Resolution, Status, or Date column header to sort; click again to reverse the direction shown by the arrow. Resolutions sort numerically. Timestamps use your computer's local time zone, and selection stays on the same task after sorting or refreshing.
 - Right-click a record to play, open its folder, redownload, copy its URL or title, or delete it. Double-click to play an existing file or retry a finished task whose file is missing.
-- **Delete Record** and **Clear History** remove only finished task records. Tasks that are downloading, merging, or being verified and the downloaded files are kept. Interrupted tasks remain available for retry after restarting.
+- Select one item in History and press **Delete**, or use the context menu's delete action. After confirmation, VidVeya cancels and removes the task and its record, **keeping completed video files**. Running tasks show a removal state until their worker exits; queued tasks and retry plans are withdrawn immediately. Ordinary Cancel on Download Tasks keeps the record.
+- Delete is scoped to the focused History list; Download Tasks does not bind this shortcut. It still edits text in URL, search, and settings inputs. Deletion targets a fixed task ID, so sorting, filtering, or progress updates cannot change its target.
+- **Clear History** removes only finished records and preserves running, merging, verifying, queued, and retry-wait tasks. Confirmed removals interrupted by a crash finish on the next startup.
 - The page shows the total record count and loads the latest 500 records for sorting. **Clear History** also removes older finished records.
 
 ## YouTube cookie import guide

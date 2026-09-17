@@ -49,8 +49,11 @@ class VideoInfo:
 
 
 # 保留 converting，仅用于恢复早期 0.1.3 遗留的中断任务。
-ACTIVE_STATES = {"starting", "downloading", "merging", "converting", "verifying"}
+RUNNING_STATES = {"starting", "downloading", "merging", "converting", "verifying"}
+WAITING_STATES = {"queued", "retry_wait"}
+ACTIVE_STATES = RUNNING_STATES | WAITING_STATES
 STATE_LABELS = {
+    "queued": "等待开始", "retry_wait": "等待重试",
     "starting": "准备下载", "downloading": "正在下载", "merging": "正在合并",
     "verifying": "正在校验", "completed": "下载完成", "failed": "下载失败",
     "cancelled": "已取消", "interrupted": "已中断",

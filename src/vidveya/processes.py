@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import threading
+import uuid
 
 from PySide6.QtCore import QThread, Signal
 
@@ -66,6 +67,7 @@ class WorkerThread(QThread):
     event_received = Signal(dict)
     result_received = Signal(dict)
     error_received = Signal(str)
+    failure_received = Signal(dict)
     cancelled_signal = Signal()
 
     def __init__(self, request: dict, parent=None):
@@ -95,7 +97,9 @@ class WorkerThread(QThread):
         if not getattr(sys, "frozen", False):
             environment["PYTHONPATH"] = str(resource_root() / "src")
         try:
-            with (logs / "worker.log").open("ab") as log:
+            log_name = (f"download-{uuid.UUID(self.request['job_id'])}-{int(self.request.get('attempt', 1))}.log"
+                        if self.request.get("command") == "download" else "worker.log")
+            with (logs / log_name).open("ab") as log:
                 with self.lock:
                     if self.cancelled.is_set():
                         self.cancelled_signal.emit()
@@ -121,7 +125,7 @@ class WorkerThread(QThread):
                     if message["event"] == "result":
                         result = message["data"]
                     elif message["event"] == "error":
-                        error = message["message"]
+                        error = message
                     else:
                         self.event_received.emit(message)
                 returncode = self.process.wait()
@@ -130,12 +134,14 @@ class WorkerThread(QThread):
                 elif result is not None and returncode == 0:
                     self.result_received.emit(result)
                 else:
-                    self.error_received.emit(error or "后台组件意外退出，请在设置中检查组件或重新安装。")
+                    self.emit_failure(error or {"message": "后台组件意外退出，请在设置中检查组件或重新安装。",
+                                                "code": "component", "retryable": False})
         except Exception as exception:
             if self.cancelled.is_set():
                 self.cancelled_signal.emit()
             else:
-                self.error_received.emit(f"无法运行下载组件：{exception}")
+                self.emit_failure({"message": f"无法运行下载组件：{exception}",
+                                   "code": "component", "retryable": False})
         finally:
             with self.lock:
                 if self.guard:
@@ -146,3 +152,7 @@ class WorkerThread(QThread):
                     self.process.wait()
                     if self.process.stdout:
                         self.process.stdout.close()
+
+    def emit_failure(self, error):
+        self.failure_received.emit(error)
+        self.error_received.emit(error["message"])
