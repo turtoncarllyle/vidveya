@@ -33,18 +33,17 @@ class TaskCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(8)
-        header = QHBoxLayout()
+
+        # 1. 顶部视频主标题（全宽展示，不受按钮挤压）
         self.title = text_label(role="Subheading")
-        header.addWidget(self.title, 1)
-        self.cancel_button = self._button("dl_btn_cancel", self.cancel_requested)
-        self.retry_button = self._button("hist_btn_retry", self.retry_requested)
-        self.play_button = self._button("dl_btn_play", self.play_requested)
-        self.reveal_button = self._button("dl_btn_open_dir", self.reveal_requested)
-        for control in (self.cancel_button, self.retry_button, self.play_button, self.reveal_button):
-            header.addWidget(control)
-        layout.addLayout(header)
+        layout.addWidget(self.title)
+
+        # 2. 规格与标签
         self.format_label = text_label()
+        self.format_label.setObjectName("CodecBadge")
         layout.addWidget(self.format_label)
+
+        # 3. 状态与进度百分比
         state_row = QHBoxLayout()
         self.status = text_label(role="Status")
         self.percent = text_label(role="ProgressValue")
@@ -52,14 +51,40 @@ class TaskCard(QFrame):
         state_row.addWidget(self.status, 1)
         state_row.addWidget(self.percent)
         layout.addLayout(state_row)
+
+        # 4. 细进度条
         self.progress_bar = QProgressBar()
+        self.progress_bar.setObjectName("TaskProgress")
         self.progress_bar.setFixedHeight(8)
         self.progress_bar.setTextVisible(False)
         layout.addWidget(self.progress_bar)
-        self.details = text_label()
-        layout.addWidget(self.details)
+
+        # 5. 醒目自适应重试倒计时横幅与错误提示
+        self.retry_banner = QLabel()
+        self.retry_banner.setObjectName("RetryCountdown")
+        self.retry_banner.setWordWrap(True)
+        self.retry_banner.hide()
+        layout.addWidget(self.retry_banner)
+
         self.error = text_label(role="Notice")
+        self.error.hide()
         layout.addWidget(self.error)
+
+        # 6. 底部信息与操作按钮组（左侧详情，右侧紧凑操作按钮）
+        footer_row = QHBoxLayout()
+        footer_row.setContentsMargins(0, 2, 0, 0)
+        footer_row.setSpacing(10)
+        self.details = text_label()
+        footer_row.addWidget(self.details, 1)
+
+        self.cancel_button = self._button("dl_btn_cancel", self.cancel_requested)
+        self.retry_button = self._button("hist_btn_retry", self.retry_requested)
+        self.play_button = self._button("dl_btn_play", self.play_requested)
+        self.reveal_button = self._button("dl_btn_open_dir", self.reveal_requested)
+        for control in (self.cancel_button, self.retry_button, self.play_button, self.reveal_button):
+            control.setObjectName("InlineAction")
+            footer_row.addWidget(control)
+        layout.addLayout(footer_row)
 
     def _button(self, key, signal):
         button = QPushButton(t(key))
@@ -145,8 +170,19 @@ class TaskCard(QFrame):
                          "verifying": "dl_progress_verifying_meta"}.get(state, "dl_progress_refreshing"))
         self.details.setText(details)
         self.details.setVisible(bool(details))
-        self.error.setText(job.get("error", ""))
-        self.error.setVisible(bool(job.get("error")) and state in {"failed", "retry_wait", "interrupted"})
+        if state == "retry_wait":
+            seconds = max(0, math.ceil((job.get("next_retry_at") or now) - now))
+            err_text = job.get("error", "")
+            banner_text = f"⚠️ {t('task_retry_wait').format(number=job['attempts'], limit=job['retry_limit'], seconds=seconds)}"
+            if err_text:
+                banner_text += f"\n   {err_text}"
+            self.retry_banner.setText(banner_text)
+            self.retry_banner.show()
+            self.error.hide()
+        else:
+            self.retry_banner.hide()
+            self.error.setText(job.get("error", ""))
+            self.error.setVisible(bool(job.get("error")) and state in {"failed", "interrupted"})
         self.cancel_button.setVisible(state in ACTIVE_STATES)
         self.cancel_button.setText(t("task_cancel_queue") if state in WAITING_STATES else t("dl_btn_cancel"))
         self.cancel_button.setEnabled(not job.get("cancel_requested") and not job.get("delete_requested"))
@@ -170,6 +206,7 @@ class TaskList(QWidget):
         self.visible_ids = []
         self._signature = None
         self._selecting = False
+        self.filter_keyword = ""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
@@ -189,6 +226,23 @@ class TaskList(QWidget):
         manager.job_removed.connect(self.refresh)
         manager.summary_changed.connect(self.refresh)
         self.refresh()
+
+    def set_filter(self, keyword: str):
+        self.filter_keyword = (keyword or "").strip().lower()
+        self._apply_filter()
+
+    def _apply_filter(self):
+        kw = getattr(self, "filter_keyword", "")
+        visible_any = False
+        for identity, card in self.cards.items():
+            job = self.manager.get(identity)
+            if not job:
+                continue
+            matches = not kw or kw in job.get("title", "").lower()
+            card.setVisible(matches)
+            if matches:
+                visible_any = True
+        self.empty.setVisible(not visible_any)
 
     def select(self, job_id, focus=False):
         if self._selecting or job_id not in self.cards:
@@ -220,7 +274,7 @@ class TaskList(QWidget):
         groups = [[job for job in jobs if job["state"] in RUNNING_STATES],
                   sorted((job for job in jobs if job["state"] in WAITING_STATES),
                          key=lambda job: (job["state"] == "retry_wait",
-                                          positions.get(job["id"], job.get("next_retry_at") or 0))),
+                                           positions.get(job["id"], job.get("next_retry_at") or 0))),
                   sorted((job for job in jobs if job["state"] not in ACTIVE_STATES),
                          key=lambda job: job.get("finished_at", 0), reverse=True)[:3]]
         signature = tuple(tuple(job["id"] for job in group) for group in groups)
@@ -257,3 +311,4 @@ class TaskList(QWidget):
             self.selected_id = None
             if ids:
                 self.select(ids[0])
+        self._apply_filter()

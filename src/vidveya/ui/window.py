@@ -25,6 +25,7 @@ from ..urls import normalize_url, validate_proxy
 from .formatting import codec_text, duration_text, size_text
 from .notifications import CompletionNotifier, play_completion_sound
 from .task_list import TaskList
+from .transfers_page import TransfersPage
 from .style import get_theme_stylesheet, resolve_theme
 
 
@@ -129,7 +130,13 @@ class QualityChipWidget(QFrame):
 
 
 class MainWindow(QMainWindow):
-    NEW_PAGE, TASKS_PAGE, HISTORY_PAGE, SETTINGS_PAGE = range(4)
+    NEW_PAGE, TRANSFERS_PAGE, SETTINGS_PAGE = range(3)
+    TASKS_PAGE = 1
+    HISTORY_PAGE = 1
+
+    @staticmethod
+    def combo_box(accessible_name="", scroll=False):
+        return combo_box(accessible_name, scroll)
 
     def __init__(self, store: Store, start_diagnostics=True):
         super().__init__()
@@ -248,8 +255,7 @@ class MainWindow(QMainWindow):
         self.pages = QStackedWidget()
         nav_items = (
             t("nav_new", "↓   新建下载"),
-            t("nav_tasks"),
-            t("nav_history", "▤   下载记录"),
+            t("nav_transfers", "⇋   传输列表"),
             t("nav_settings", "⚙   设置"),
         )
         for index, text in enumerate(nav_items):
@@ -258,7 +264,7 @@ class MainWindow(QMainWindow):
             self.navigation.addButton(nav, index)
             side_layout.addWidget(nav)
         self.navigation.idClicked.connect(self.show_page)
-        self.pages.currentChanged.connect(lambda index: self.navigation.button(index).setChecked(True))
+        self.pages.currentChanged.connect(lambda index: self.navigation.button(index).setChecked(True) if self.navigation.button(index) else None)
         self.navigation.button(0).setChecked(True)
 
         side_layout.addStretch()
@@ -278,7 +284,7 @@ class MainWindow(QMainWindow):
         mini_layout.addWidget(self.mini_title)
         mini_layout.addWidget(self.mini_progress)
         mini_layout.addWidget(self.mini_status)
-        self.sidebar_mini_task.mousePressEvent = lambda e: self.show_page(getattr(self, "TASKS_PAGE", 1))
+        self.sidebar_mini_task.mousePressEvent = lambda e: self.show_page(self.TRANSFERS_PAGE)
         self.sidebar_mini_task.hide()
         side_layout.addWidget(self.sidebar_mini_task)
 
@@ -306,8 +312,33 @@ class MainWindow(QMainWindow):
         horizontal.addWidget(side)
         horizontal.addWidget(self.pages, 1)
         self._build_download_page()
-        self._build_tasks_page()
-        self._build_history_page()
+
+        self.transfers_page = TransfersPage(self)
+        self.pages.addWidget(self.transfers_page)
+
+        # 映射向后兼容属性供其他模块与测试直接访问
+        self.task_list = self.transfers_page.task_list
+        self.history = self.transfers_page.history
+        self.history_detail = self.transfers_page.history_detail
+        self.sort_combo = self.transfers_page.sort_combo
+        self.search_input = self.transfers_page.search_input
+        self.clear_history_button = self.transfers_page.clear_history_button
+        self.delete_history_button = self.transfers_page.delete_history_button
+        self.reveal_button = self.transfers_page.reveal_button
+        self.play_history_button = self.transfers_page.play_history_button
+        self.retry_button = self.transfers_page.retry_button
+        self.resume_queue_button = self.transfers_page.resume_all_btn
+        self.task_summary = self.transfers_page.task_summary
+        self.history_delete_shortcut = self.transfers_page.history_delete_shortcut
+        self.history_actions_widget = self.transfers_page.compat_actions
+        self.current_sort_column = 3
+        self.current_sort_order = Qt.SortOrder.DescendingOrder
+
+        self.task_list.cancel_requested.connect(self.downloads.cancel)
+        self.task_list.retry_requested.connect(self.retry_task)
+        self.task_list.play_requested.connect(self.play_task)
+        self.task_list.reveal_requested.connect(self.reveal_task)
+
         self._build_settings_page()
         self.setCentralWidget(root)
 
@@ -521,135 +552,36 @@ class MainWindow(QMainWindow):
         layout.addLayout(footer)
 
     def show_page(self, index):
+        if index in (self.TASKS_PAGE, self.HISTORY_PAGE):
+            self.pages.setCurrentIndex(self.TRANSFERS_PAGE)
+            if hasattr(self, "transfers_page"):
+                if index == self.HISTORY_PAGE:
+                    self.transfers_page.switch_to_history()
+                else:
+                    self.transfers_page.switch_to_active()
+            btn = self.navigation.button(self.TRANSFERS_PAGE)
+            if btn:
+                btn.setChecked(True)
+            return
         self.pages.setCurrentIndex(index)
-        self.navigation.button(index).setChecked(True)
+        btn = self.navigation.button(index)
+        if btn:
+            btn.setChecked(True)
 
     def continue_adding(self):
         self.clear_url()
         self.added_actions.hide()
         self.url_input.setFocus()
 
-    def _build_tasks_page(self):
-        layout = self.page(t("task_heading"), t("task_subtitle"), scroll=True)
-        toolbar = QHBoxLayout()
-        self.task_summary = label("", "Muted", True)
-        toolbar.addWidget(self.task_summary, 1)
-        toolbar.addWidget(button(t("task_new"), lambda: self.show_page(self.NEW_PAGE), "Primary"))
-        layout.addLayout(toolbar)
-        self.resume_queue_button = button(t("task_resume_queue"), self.downloads.resume_queue, "Primary")
-        layout.addWidget(self.resume_queue_button)
-        self.task_list = TaskList(self.downloads)
-        self.task_list.cancel_requested.connect(self.downloads.cancel)
-        self.task_list.retry_requested.connect(self.retry_task)
-        self.task_list.play_requested.connect(self.play_task)
-        self.task_list.reveal_requested.connect(self.reveal_task)
-        layout.addWidget(self.task_list)
-        layout.addWidget(button(t("task_all_history"), lambda: self.show_page(self.HISTORY_PAGE)))
-        layout.addStretch()
-
-    def _build_history_page(self):
-        layout = self.page(t("hist_heading", "下载记录"),
-                           t("hist_subtitle", "成功下载的文件已验证视频轨和音频轨。"))
-
-        # 顶部工具栏（记录总数、清空记录与优雅的表头排序提示）
-        # 顶部工具栏（实时搜索输入框、记录总数、清空记录与排序提示）
-        toolbar = QHBoxLayout()
-        toolbar.setSpacing(12)
-
-        self.search_input = QLineEdit()
-        self.search_input.setObjectName("SearchInput")
-        self.search_input.setPlaceholderText(t("hist_search_placeholder", "输入关键词实时筛选历史记录…"))
-        self.search_input.setClearButtonEnabled(True)
-        self.search_input.setMinimumWidth(260)
-        self.search_input.textChanged.connect(self.on_search_text_changed)
-        toolbar.addWidget(self.search_input)
-
-        self.history_count_label = label(t("hist_total_records", "共 {count} 条记录").format(count=0), "Muted")
-        toolbar.addWidget(self.history_count_label)
-
-        tip_label = label("💡 " + t("hist_sort_header_tip", "点击列头可按该列升/降序排序"), "Muted")
-        tip_label.setStyleSheet("font-size: 12px;")
-        toolbar.addSpacing(8)
-        toolbar.addWidget(tip_label)
-        toolbar.addStretch()
-
-        # 保持 sort_combo 供向后兼容及底层联动
-        self.sort_combo = combo_box("排序方式")
-        self.sort_combo.addItem(t("hist_sort_date_desc", "创建时间 (最新)"), "date_desc")
-        self.sort_combo.addItem(t("hist_sort_date_asc", "创建时间 (最早)"), "date_asc")
-        self.sort_combo.addItem(t("hist_sort_name_asc", "视频名称 (A-Z)"), "name_asc")
-        self.sort_combo.addItem(t("hist_sort_name_desc", "视频名称 (Z-A)"), "name_desc")
-        self.sort_combo.currentIndexChanged.connect(self.on_sort_changed)
-        self.sort_combo.hide()
-        toolbar.addWidget(self.sort_combo)
-
-        self.clear_history_button = button(t("hist_btn_clear", "清空记录"), self.clear_all_history, "DangerSecondary")
-        self.clear_history_button.setEnabled(False)
-        toolbar.addWidget(self.clear_history_button)
-        layout.addLayout(toolbar)
-
-        self.history = QTableWidget(0, 4)
-        header = self.history.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for index in range(1, 4):
-            header.setSectionResizeMode(index, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionsClickable(True)
-        header.setSortIndicatorShown(True)
-        header.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.current_sort_column = 3
-        self.current_sort_order = Qt.SortOrder.DescendingOrder
-        header.setSortIndicator(self.current_sort_column, self.current_sort_order)
-        header.sectionClicked.connect(self.on_header_section_clicked)
-        self._update_header_labels()
-
-        self.history.verticalHeader().hide()
-        self.history.verticalHeader().setDefaultSectionSize(46)
-        self.history.setShowGrid(False)
-        self.history.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.history.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.history.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.history.itemSelectionChanged.connect(self.select_history)
-        self.history.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.history.customContextMenuRequested.connect(self.show_history_context_menu)
-        self.history.itemDoubleClicked.connect(self.on_history_double_clicked)
-        self.history_delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Delete), self.history)
-        self.history_delete_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-        self.history_delete_shortcut.setAutoRepeat(False)
-        self.history_delete_shortcut.activated.connect(self.delete_selected)
-        layout.addWidget(self.history, 1)
-
-        self.history_detail = label(t("hist_empty", "尚无下载记录。"), "Muted", True)
-        layout.addWidget(self.history_detail)
-
-        # 底部操作栏（维持控件属性供向后兼容与自动化测试，界面隐藏以保持工作台极简纯净，主推双击与右键菜单）
-        self.history_actions_widget = QWidget()
-        buttons = QHBoxLayout(self.history_actions_widget)
-        buttons.setContentsMargins(0, 0, 0, 0)
-        self.reveal_button = button(t("hist_btn_reveal", "打开所在文件夹"), self.reveal_selected)
-        self.play_history_button = button(t("dl_btn_play", "播放视频"), self.play_selected_history)
-        self.retry_button = button(t("hist_btn_retry", "重新下载"), self.retry_selected)
-        self.delete_history_button = button(t("hist_btn_delete", "删除记录"), self.delete_selected, "DangerSecondary")
-        self.reveal_button.setEnabled(False)
-        self.play_history_button.setEnabled(False)
-        self.retry_button.setEnabled(False)
-        self.delete_history_button.setEnabled(False)
-        buttons.addWidget(self.reveal_button)
-        buttons.addWidget(self.play_history_button)
-        buttons.addWidget(self.retry_button)
-        buttons.addStretch()
-        buttons.addWidget(self.delete_history_button)
-        self.history_actions_widget.hide()
-        layout.addWidget(self.history_actions_widget)
-
     def _build_settings_page(self):
         layout = self.page(t("set_heading", "设置"),
                            t("set_subtitle", "下载偏好与组件状态都保存在这台电脑上。"), scroll=True)
 
-        # 1. 常规与偏好卡片 (General & Preferences)
+        # 1. 外观与偏好卡片 (Appearance & General)
         pref_card = QFrame()
         pref_card.setObjectName("Card")
         pref_layout = QVBoxLayout(pref_card)
-        pref_layout.setContentsMargins(18, 16, 18, 16)
+        pref_layout.setContentsMargins(20, 18, 20, 18)
         pref_layout.setSpacing(14)
         pref_layout.addWidget(label(t("set_sec_appearance", "外观与偏好"), "Subheading"))
 
@@ -694,37 +626,6 @@ class MainWindow(QMainWindow):
         self.close_prompt_input.toggled.connect(lambda _: self.auto_save())
         pref_grid.addWidget(self.close_prompt_input, 1, 2, 1, 2)
 
-        pref_grid.addWidget(label(t("set_sound_label", "完成提醒") + "：", wrap=True), 2, 0)
-        self.completion_sound_input = QCheckBox(t("set_completion_sound", "下载完成后播放提示音"))
-        self.completion_sound_input.setChecked(self.store.get_setting("completion_sound", True))
-        self.completion_sound_input.setToolTip(t(
-            "set_completion_sound_note", "校验画面、声音和时长通过后提醒，最小化时也会播放。"
-        ))
-        self.completion_sound_input.toggled.connect(self.on_completion_sound_changed)
-        pref_grid.addWidget(self.completion_sound_input, 2, 1, 1, 3)
-
-        self.completion_notification_input = QCheckBox(t("set_completion_notification"))
-        self.completion_notification_input.setChecked(self.store.get_setting("completion_notification", False))
-        self.completion_notification_input.setToolTip(t("set_completion_notification_note"))
-        self.completion_notification_input.toggled.connect(self.on_completion_notification_changed)
-        pref_grid.addWidget(self.completion_notification_input, 3, 1, 1, 3)
-
-        pref_grid.addWidget(label(t("set_parallel") + "：", wrap=True), 4, 0)
-        self.parallel_input = QSpinBox()
-        self.parallel_input.setRange(1, 5)
-        self.parallel_input.setValue(self.downloads.max_parallel)
-        self.parallel_input.setAccessibleName(t("set_parallel"))
-        self.parallel_input.valueChanged.connect(self.downloads.set_max_parallel)
-        pref_grid.addWidget(self.parallel_input, 4, 1)
-        pref_grid.addWidget(label(t("set_retries") + "：", wrap=True), 4, 2)
-        self.retry_count_input = QSpinBox()
-        self.retry_count_input.setRange(0, 10)
-        self.retry_count_input.setValue(bounded_int(self.store.get_setting("auto_retry_count", 3), 3, 0, 10))
-        self.retry_count_input.setAccessibleName(t("set_retries"))
-        self.retry_count_input.valueChanged.connect(lambda value: self.store.set_setting("auto_retry_count", value))
-        pref_grid.addWidget(self.retry_count_input, 4, 3)
-        pref_grid.addWidget(label(t("set_retries_note"), "Muted", True), 5, 0, 1, 4)
-
         for control in (self.theme_input, self.language_input, self.close_action_input):
             control.setMinimumContentsLength(12)
             control.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
@@ -734,15 +635,64 @@ class MainWindow(QMainWindow):
         pref_grid.setColumnStretch(1, 1)
         pref_grid.setColumnStretch(3, 1)
         pref_layout.addLayout(pref_grid)
-
         pref_layout.addWidget(label(t("set_close_note", "最小化后可从任务栏恢复窗口；可随时在设置中更改此行为。"), "Muted", True))
         layout.addWidget(pref_card)
 
-        # 2. 存储与网络卡片 (Storage & Network)
+        # 2. 下载与调度卡片 (Downloads & Concurrency)
+        sched_card = QFrame()
+        sched_card.setObjectName("Card")
+        sched_layout = QVBoxLayout(sched_card)
+        sched_layout.setContentsMargins(20, 18, 20, 18)
+        sched_layout.setSpacing(14)
+        sched_layout.addWidget(label(t("task_heading", "下载与调度"), "Subheading"))
+
+        sched_grid = QGridLayout()
+        sched_grid.setHorizontalSpacing(14)
+        sched_grid.setVerticalSpacing(12)
+
+        sched_grid.addWidget(label(t("set_parallel") + "：", wrap=True), 0, 0)
+        self.parallel_input = QSpinBox()
+        self.parallel_input.setRange(1, 5)
+        self.parallel_input.setValue(self.downloads.max_parallel)
+        self.parallel_input.setAccessibleName(t("set_parallel"))
+        self.parallel_input.valueChanged.connect(self.downloads.set_max_parallel)
+        sched_grid.addWidget(self.parallel_input, 0, 1)
+
+        sched_grid.addWidget(label(t("set_retries") + "：", wrap=True), 0, 2)
+        self.retry_count_input = QSpinBox()
+        self.retry_count_input.setRange(0, 10)
+        self.retry_count_input.setValue(bounded_int(self.store.get_setting("auto_retry_count", 3), 3, 0, 10))
+        self.retry_count_input.setAccessibleName(t("set_retries"))
+        self.retry_count_input.valueChanged.connect(lambda value: self.store.set_setting("auto_retry_count", value))
+        sched_grid.addWidget(self.retry_count_input, 0, 3)
+
+        sched_grid.addWidget(label(t("set_retries_note"), "Muted", True), 1, 0, 1, 4)
+
+        sched_grid.addWidget(label(t("set_sound_label", "完成提醒") + "：", wrap=True), 2, 0)
+        self.completion_sound_input = QCheckBox(t("set_completion_sound", "下载完成后播放提示音"))
+        self.completion_sound_input.setChecked(self.store.get_setting("completion_sound", True))
+        self.completion_sound_input.setToolTip(t(
+            "set_completion_sound_note", "校验画面、声音和时长通过后提醒，最小化时也会播放。"
+        ))
+        self.completion_sound_input.toggled.connect(self.on_completion_sound_changed)
+        sched_grid.addWidget(self.completion_sound_input, 2, 1, 1, 3)
+
+        self.completion_notification_input = QCheckBox(t("set_completion_notification"))
+        self.completion_notification_input.setChecked(self.store.get_setting("completion_notification", False))
+        self.completion_notification_input.setToolTip(t("set_completion_notification_note"))
+        self.completion_notification_input.toggled.connect(self.on_completion_notification_changed)
+        sched_grid.addWidget(self.completion_notification_input, 3, 1, 1, 3)
+
+        sched_grid.setColumnStretch(1, 1)
+        sched_grid.setColumnStretch(3, 1)
+        sched_layout.addLayout(sched_grid)
+        layout.addWidget(sched_card)
+
+        # 3. 存储与网络卡片 (Storage & Network)
         storage_card = QFrame()
         storage_card.setObjectName("Card")
         storage_layout = QVBoxLayout(storage_card)
-        storage_layout.setContentsMargins(18, 16, 18, 16)
+        storage_layout.setContentsMargins(20, 18, 20, 18)
         storage_layout.setSpacing(12)
         storage_layout.addWidget(label(t("set_sec_storage", "存储与网络"), "Subheading"))
 
@@ -766,11 +716,11 @@ class MainWindow(QMainWindow):
         storage_layout.addWidget(label(t("set_proxy_note", "浏览器中的代理扩展不会自动影响桌面助手。代理配置仅保存在本机。"), "Muted", True))
         layout.addWidget(storage_card)
 
-        # 3. 凭据与组件卡片 (Credentials & Diagnostics)
+        # 4. 凭据与组件卡片 (Credentials & Diagnostics)
         diag_card = QFrame()
         diag_card.setObjectName("Card")
         diag_layout = QVBoxLayout(diag_card)
-        diag_layout.setContentsMargins(18, 16, 18, 16)
+        diag_layout.setContentsMargins(20, 18, 20, 18)
         diag_layout.setSpacing(12)
 
         auth_header = QHBoxLayout()
@@ -1591,6 +1541,12 @@ class MainWindow(QMainWindow):
                 self.history_count_label.setText(caption)
         if hasattr(self, "clear_history_button"):
             self.clear_history_button.setEnabled(self.store.has_finished_jobs())
+        if hasattr(self, "transfers_page"):
+            summary = self.downloads.summary() if hasattr(self, "downloads") else {"running": 0, "waiting": 0}
+            active_count = summary["running"] + summary["waiting"]
+            self.transfers_page.update_badges(active_count, len(self.history_jobs))
+            if active_count == 0 and not getattr(self, "current_job", None):
+                self.transfers_page.switch_to_history()
         self._render_history_table()
 
     def _render_history_table(self):
@@ -1659,6 +1615,9 @@ class MainWindow(QMainWindow):
     def select_history(self):
         if not hasattr(self, "reveal_button"):
             return
+        if hasattr(self, "transfers_page") and self.history.currentRow() >= 0:
+            if self.transfers_page.content_stack.currentIndex() != 1:
+                self.transfers_page.switch_to_history()
         job = self.selected_job()
         has_file = bool(job and job.get("result", {}).get("path"))
         self.reveal_button.setEnabled(has_file)

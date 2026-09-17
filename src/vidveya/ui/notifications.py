@@ -136,6 +136,14 @@ class CompletionPopup(QFrame):
         self.hide()
         self.open_folder_requested.emit(path)
 
+    def enterEvent(self, event):
+        self.dismiss_timer.stop()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.dismiss_timer.start(4000)
+        super().leaveEvent(event)
+
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.open_tasks()
