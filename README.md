@@ -6,14 +6,22 @@
 
 VidVeya 是一个独立的 Windows 桌面应用：粘贴 YouTube 或 Shorts 链接，选择源视频实际提供的清晰度，下载完成后由 FFmpeg 合并并由 ffprobe 验证视频轨和音频轨。下载和合并都在本机完成，没有 VidVeya 服务端，也不要求用户另外安装 Python、Node.js、FFmpeg 或 Deno。
 
+## 产品定位：普通用户开箱即用
+
+**VidVeya 面向普通用户，安装后即可使用；便携版完整解压后即可运行。** 用户无需自行下载安装运行环境，也无需配置系统环境变量（如 `PATH`）。
+
+安装包和便携包均完整内置 Python 运行时、Qt、yt-dlp 及匹配的 EJS 依赖、Deno、FFmpeg 和 ffprobe。JavaScript 运行环境由内置 Deno 提供，用户无需安装 Node.js。
+
+这些组件构成了软件体积的重要部分，也让用户省去了手动下载、安装和配置环境的步骤。**体积优化必须保留完整的下载、合并与校验能力，以及无需用户配置环境的使用体验。**
+
 ## 下载与安装
 
 从 [GitHub Releases](https://github.com/turtoncarllyle/vidveya/releases) 下载：
 
 - `VidVeya-*-win-x64-setup.exe`：推荐，当前用户安装，不需要管理员权限。
-- `VidVeya-*-win-x64-portable.zip`：解压后运行 `VidVeya.exe`。
+- `VidVeya-*-win-x64-portable.zip`：完整解压后运行 `VidVeya.exe`。
 
-安装包和便携包都内置 Qt、yt-dlp、yt-dlp-ejs、FFmpeg、ffprobe 和 Deno。首次启动会检查组件状态。
+应用启动时会检查内置组件状态，常规使用直接采用随应用交付的组件。
 
 ## 使用
 
@@ -120,7 +128,7 @@ Cookie 相当于登录凭据，请勿发送给他人或上传到 GitHub。VidVey
 
 ## 开发
 
-需要 Python 3.12 x64。构建脚本会下载并校验固定版本的 Deno、FFmpeg 和 Inno Setup；运行环境不会被打进源码仓库。
+以下步骤仅面向从源码构建的开发者，需要 Python 3.12 x64。构建脚本会下载并校验固定版本的 Deno、FFmpeg 和 Inno Setup；运行组件随安装包和便携包交付，不提交到源码仓库。
 
 ```powershell
 py -3.12 -m venv .venv

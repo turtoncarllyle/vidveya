@@ -6,14 +6,22 @@
 
 VidVeya is a standalone Windows desktop app. Paste a YouTube or Shorts URL, choose a source resolution, and download it locally. yt-dlp resolves the streams, FFmpeg merges separate video and audio, and ffprobe verifies the result before VidVeya reports success. No VidVeya server is involved, and users do not need to install Python, Node.js, FFmpeg, or Deno separately.
 
+## Product goal: ready to use for everyday users
+
+**VidVeya is designed for everyday users: install it and run it, or fully extract the portable ZIP and launch the app.** Users do not need to download or install runtimes themselves, or configure system environment variables such as `PATH`.
+
+Both packages include the Python runtime, Qt, yt-dlp with its matching EJS dependencies, Deno, FFmpeg, and ffprobe. Bundled Deno provides the JavaScript runtime, so users do not need to install Node.js.
+
+These components account for a substantial part of the package size and save users the work of downloading, installing, and configuring dependencies. **Size optimizations must preserve complete downloading, merging, and verification capabilities, along with the experience of using VidVeya without configuring a runtime environment.**
+
 ## Download and install
 
 Get the latest files from [GitHub Releases](https://github.com/turtoncarllyle/vidveya/releases):
 
 - `VidVeya-*-win-x64-setup.exe`: recommended per-user installer; administrator rights are not required.
-- `VidVeya-*-win-x64-portable.zip`: extract and run `VidVeya.exe`.
+- `VidVeya-*-win-x64-portable.zip`: fully extract the ZIP and run `VidVeya.exe`.
 
-Both packages include Qt, yt-dlp, yt-dlp-ejs, FFmpeg, ffprobe, and Deno. The app checks the bundled components when it starts.
+The app checks its bundled components at startup and uses them for normal operation.
 
 ## Usage
 
@@ -120,7 +128,7 @@ Cookies are login credentials: do not share them or upload them to GitHub. VidVe
 
 ## Development
 
-Build with Python 3.12 x64. The provisioning script downloads and verifies pinned Deno, FFmpeg, and Inno Setup releases; runtime components are not committed to the source repository.
+The following steps are for developers building from source and require Python 3.12 x64. The provisioning script downloads and verifies pinned Deno, FFmpeg, and Inno Setup releases. Runtime components are shipped in both the installer and portable packages and are not committed to the source repository.
 
 ```powershell
 py -3.12 -m venv .venv
