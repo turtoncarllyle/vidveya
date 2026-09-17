@@ -19,6 +19,7 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 qt_api = "pyside6"
+addopts = "-o tmp_path_retention_policy=none"
 markers = ["integration: requires bundled media tools"]
 
 [tool.ruff]
