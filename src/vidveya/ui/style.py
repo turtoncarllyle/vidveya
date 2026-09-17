@@ -42,6 +42,11 @@ LIGHT_THEME = {
     "danger_hover": "#B91C1C",
     "danger_bg": "#FEE2E2",
     "danger_border": "#FCA5A5",
+    "warning": "#D97706",
+    "warning_hover": "#B45309",
+    "warning_bg": "#FFFBEB",
+    "warning_text": "#B45309",
+    "warning_border": "#FDE68A",
 }
 
 DARK_THEME = {
@@ -77,6 +82,11 @@ DARK_THEME = {
     "danger_hover": "#EF4444",
     "danger_bg": "#3B181A",
     "danger_border": "#7F1D1D",
+    "warning": "#F59E0B",
+    "warning_hover": "#D97706",
+    "warning_bg": "#362B16",
+    "warning_text": "#FBBF24",
+    "warning_border": "#78350F",
 }
 
 
@@ -583,6 +593,89 @@ QCheckBox::indicator:checked:hover {{
 QCheckBox::indicator:disabled {{
     border-color: {tokens['border']};
     background: {tokens['bg_subtle']};
+}}
+QFrame#SegmentedControl {{
+    background: {tokens['bg_subtle']};
+    border: 1px solid {tokens['border']};
+    border-radius: 8px;
+    padding: 3px;
+}}
+QPushButton#SegmentBtn {{
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-weight: 600;
+    font-size: 13px;
+    color: {tokens['text_muted']};
+    background: transparent;
+}}
+QPushButton#SegmentBtn:hover {{
+    background: {tokens['bg_hover']};
+    color: {tokens['text_main']};
+}}
+QPushButton#SegmentBtn:checked {{
+    background: {tokens['bg_surface']};
+    color: {tokens['accent']};
+    font-weight: 700;
+}}
+QFrame#TaskCard {{
+    background: {tokens['bg_surface']};
+    border: 1px solid {tokens['border']};
+    border-radius: 12px;
+}}
+QFrame#TaskCard:hover {{
+    border-color: {tokens['border_strong']};
+}}
+QFrame#TaskCard[selected="true"] {{
+    border: 2px solid {tokens['accent']};
+}}
+QProgressBar#TaskProgress {{
+    border: 0;
+    border-radius: 4px;
+    background: {tokens['progress_bg']};
+    text-align: center;
+    max-height: 8px;
+    min-height: 8px;
+}}
+QProgressBar#TaskProgress::chunk {{
+    border-radius: 4px;
+    background: {tokens['progress_chunk']};
+}}
+QFrame#SidebarMiniTask {{
+    background: {tokens['bg_surface']};
+    border: 1px solid {tokens['border']};
+    border-radius: 10px;
+}}
+QFrame#SidebarMiniTask:hover {{
+    border-color: {tokens['border_strong']};
+}}
+QFrame#NotificationPopup {{
+    background: {tokens['bg_surface']};
+    border: 1px solid {tokens['border_strong']};
+    border-radius: 12px;
+}}
+QLabel#ProgressValue {{
+    font-size: 12px;
+    font-weight: 600;
+    color: {tokens['text_main']};
+    background: transparent;
+}}
+QLabel#RetryCountdown {{
+    background: {tokens['warning_bg']};
+    color: {tokens['warning_text']};
+    border: 1px solid {tokens['warning_border']};
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 600;
+}}
+QLabel#CodecBadge {{
+    background: {tokens['badge_bg']};
+    color: {tokens['badge_text']};
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: 600;
 }}
 """
 

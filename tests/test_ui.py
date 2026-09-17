@@ -539,13 +539,27 @@ def test_qt_translator_and_standard_dialog_buttons():
 
 
 def test_stylesheet_contains_modern_tokens():
-    from vidveya.ui.style import get_theme_stylesheet
+    from vidveya.ui.style import get_theme_stylesheet, LIGHT_THEME, DARK_THEME
+    for tokens in (LIGHT_THEME, DARK_THEME):
+        assert "warning_bg" in tokens
+        assert "warning_text" in tokens
+        assert "warning_border" in tokens
+
     for theme in ("light", "dark"):
         qss = get_theme_stylesheet(theme)
         assert "QualityCard" in qss
         assert "HeroInput" in qss
         assert "SearchInput" in qss
         assert "InlineAction" in qss
+        assert "QFrame#SegmentedControl" in qss
+        assert "QPushButton#SegmentBtn" in qss
+        assert "QFrame#TaskCard" in qss
+        assert "QProgressBar#TaskProgress" in qss
+        assert "QFrame#SidebarMiniTask" in qss
+        assert "QFrame#NotificationPopup" in qss
+        assert "QLabel#RetryCountdown" in qss
+        assert "QLabel#ProgressValue" in qss
+        assert "QLabel#CodecBadge" in qss
 
 
 def test_new_modern_i18n_keys():
