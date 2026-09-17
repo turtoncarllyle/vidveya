@@ -11,7 +11,7 @@
 - 修正任务与记录标签跳转、重复任务定位、失败任务重试入口、解析期间切换链接及退出回执收尾；改善深色主题和最小窗口布局。
 - 保留源编码、无损合并和音视频验证，不自动转码；应用及构建版本统一为 `0.1.8`。
 
-本次源码验证：143 项测试及 Ruff 检查通过；真实 720P / 1080P 并发下载、最小化继续下载、双声道音频和抽样画面解码通过。中英文、浅深主题和 940×720 最小窗口均已检查。本轮未对 4K、8K、Shorts 或会员账号进行真实网络回归，也未在全新 Windows 虚拟机中验收。
+本次源码验证：145 项测试及 Ruff 检查通过；真实 720P / 1080P 并发下载、最小化继续下载、双声道音频和抽样画面解码通过。中英文、浅深主题和 940×720 最小窗口均已检查。本轮未对 4K、8K、Shorts 或会员账号进行真实网络回归，也未在全新 Windows 虚拟机中验收。
 
 ## English
 
@@ -24,7 +24,7 @@
 - Fix tab navigation, duplicate-task selection, failed-task retry access, URL changes during analysis, and shutdown callbacks. Improve dark-theme and minimum-window layouts.
 - Keep source codecs, lossless merging, and audio/video validation without automatic transcoding. Align application and build versions at `0.1.8`.
 
-Source validation: 143 tests and Ruff passed, along with live parallel 720p / 1080p downloads, continued downloads while minimized, stereo audio, and sampled video decoding. Both languages, light/dark themes, and the 940×720 minimum window were checked. This round did not include live 4K, 8K, Shorts, or member-account regression tests, or validation in a fresh Windows VM.
+Source validation: 145 tests and Ruff passed, along with live parallel 720p / 1080p downloads, continued downloads while minimized, stereo audio, and sampled video decoding. Both languages, light/dark themes, and the 940×720 minimum window were checked. This round did not include live 4K, 8K, Shorts, or member-account regression tests, or validation in a fresh Windows VM.
 
 # v0.1.7
 

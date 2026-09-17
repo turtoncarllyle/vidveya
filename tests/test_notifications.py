@@ -1,8 +1,10 @@
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QWidget
 
 from vidveya.ui.notifications import CompletionNotifier
+from vidveya.ui.style import get_theme_stylesheet
 
 
 @pytest.fixture
@@ -92,3 +94,24 @@ def test_each_completion_opens_its_own_file_and_folder(notifier, tmp_path, qtbot
     with qtbot.waitSignal(notifications.open_folder_requested, check_params_cb=lambda path: path == second):
         qtbot.mouseClick(popup.rows[1].folder_button, Qt.MouseButton.LeftButton)
     assert not popup.isVisible()
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_notification_heading_remains_readable_on_rendered_background(notifier, qtbot, theme):
+    notifications, owner = notifier
+    owner.setStyleSheet(get_theme_stylesheet(theme))
+    notifications.notify('画面与声音校验成功', {'resolution': 1080, 'container': 'mp4'})
+    notifications.flush()
+    popup = notifications.popup
+    qtbot.waitUntil(popup.isVisible)
+    background = popup.grab().toImage().pixelColor(8, 30)
+    foreground = popup.heading.palette().color(QPalette.ColorRole.WindowText)
+
+    def luminance(color):
+        channels = [value / 255 for value in (color.red(), color.green(), color.blue())]
+        linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+                  for value in channels]
+        return sum(weight * value for weight, value in zip((0.2126, 0.7152, 0.0722), linear))
+
+    dark, light = sorted((luminance(background), luminance(foreground)))
+    assert (light + 0.05) / (dark + 0.05) >= 4.5

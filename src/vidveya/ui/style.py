@@ -649,10 +649,27 @@ QFrame#SidebarMiniTask {{
 QFrame#SidebarMiniTask:hover {{
     border-color: {tokens['border_strong']};
 }}
-QFrame#NotificationPopup {{
+QFrame#CompletionPopup {{
     background: {tokens['bg_surface']};
     border: 1px solid {tokens['border_strong']};
     border-radius: 12px;
+}}
+QFrame#NotificationItem {{
+    background: transparent;
+    border: 0;
+}}
+QPushButton#NotificationClose {{
+    background: transparent;
+    border: 0;
+    padding: 0;
+    min-width: 0;
+    min-height: 0;
+    color: {tokens['text_muted']};
+    font-size: 20px;
+}}
+QPushButton#NotificationClose:hover {{
+    background: {tokens['bg_hover']};
+    color: {tokens['text_main']};
 }}
 QLabel#ProgressValue {{
     font-size: 12px;

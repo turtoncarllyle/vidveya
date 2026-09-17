@@ -580,7 +580,7 @@ def test_stylesheet_contains_modern_tokens():
         assert "QFrame#TaskCard" in qss
         assert "QProgressBar#TaskProgress" in qss
         assert "QFrame#SidebarMiniTask" in qss
-        assert "QFrame#NotificationPopup" in qss
+        assert "QFrame#CompletionPopup" in qss
         assert "QLabel#RetryCountdown" in qss
         assert "QLabel#ProgressValue" in qss
         assert "QLabel#CodecBadge" in qss
