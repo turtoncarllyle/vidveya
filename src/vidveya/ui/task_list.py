@@ -133,7 +133,7 @@ class TaskCard(QFrame):
         elif job.get("cancel_requested") and state in RUNNING_STATES:
             status = t("dl_btn_cancelling")
         elif state == "retry_wait":
-            status = t("task_retry_wait").format(number=job["attempts"], limit=job["retry_limit"],
+            status = t("task_retry_wait").format(number=job.get("attempts", 1), limit=job.get("retry_limit", 3),
                                                  seconds=max(0, math.ceil((job.get("next_retry_at") or now) - now)))
         elif state == "queued":
             status = t("task_queue_position").format(position=position)

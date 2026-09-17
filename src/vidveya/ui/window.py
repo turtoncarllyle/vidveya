@@ -1266,10 +1266,10 @@ class MainWindow(QMainWindow):
         if hasattr(self, "task_summary"):
             self.task_summary.setText(caption + " · " + speed + " · " +
                                       t("task_parallel").format(count=self.downloads.max_parallel))
-        if hasattr(self, "navigation") and hasattr(self, "TASKS_PAGE"):
-            btn = self.navigation.button(self.TASKS_PAGE)
+        if hasattr(self, "navigation") and hasattr(self, "TRANSFERS_PAGE"):
+            btn = self.navigation.button(self.TRANSFERS_PAGE)
             if btn:
-                btn.setText(t("nav_tasks") + (f"  {count}" if count else ""))
+                btn.setText(t("nav_transfers", "⇋   传输列表") + (f"  {count}" if count else ""))
         if hasattr(self, "resume_queue_button"):
             self.resume_queue_button.setVisible(self.downloads.paused and summary["waiting"] > 0)
             self.resume_queue_button.setEnabled(self.ready)
