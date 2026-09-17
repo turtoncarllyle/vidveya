@@ -160,6 +160,8 @@ class MainWindow(QMainWindow):
         self.ready = False
         self.quality_chips = []
         self.last_downloaded_path = None
+        self._dismissed_clipboard = None
+        self._sniffed_text = ""
 
         # 初始化主题与语言（默认跟随系统）
         self.current_theme_setting = self.store.get_setting("theme", "system")
@@ -339,7 +341,6 @@ class MainWindow(QMainWindow):
 
         self.clipboard_badge = label(t("dl_clipboard_detected", "已识别剪贴板中的视频链接"), "Badge")
         self.clipboard_badge.setObjectName("ClipboardBadge")
-        self.clipboard_badge.setStyleSheet("font-size: 11px; padding: 2px 6px;")
         self.clipboard_badge.hide()
         hero_layout.addWidget(self.clipboard_badge)
 
@@ -360,24 +361,21 @@ class MainWindow(QMainWindow):
 
         # 原地反馈横幅
         self.added_actions = QFrame()
-        self.added_actions.setObjectName("Card")
-        self.added_actions.setStyleSheet("background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px;")
+        self.added_actions.setObjectName("AddedBanner")
         added_layout = QHBoxLayout(self.added_actions)
         added_layout.setContentsMargins(18, 12, 18, 12)
         added_layout.setSpacing(14)
 
         self.added_banner_label = label("✓  " + t("dl_added_banner", "任务已加入下载队列"), "Subheading")
-        self.added_banner_label.setStyleSheet("color: #10B981; font-weight: 600; font-size: 14px;")
+        self.added_banner_label.setObjectName("AddedBannerLabel")
         added_layout.addWidget(self.added_banner_label)
 
         added_layout.addStretch()
 
         self.view_transfers_btn = button(t("dl_view_transfers", "查看传输列表 ➔"), self.go_to_transfers)
-        self.view_transfers_btn.setStyleSheet("font-size: 13px; font-weight: 600;")
         added_layout.addWidget(self.view_transfers_btn)
 
         self.continue_add_btn = button(t("dl_continue", "继续添加"), self.reset_for_next)
-        self.continue_add_btn.setStyleSheet("font-size: 13px;")
         added_layout.addWidget(self.continue_add_btn)
 
         self.added_actions.hide()
@@ -418,9 +416,9 @@ class MainWindow(QMainWindow):
         card_layout.setSpacing(20)
 
         self.thumbnail = label("▶")
+        self.thumbnail.setObjectName("ThumbnailPlaceholder")
         self.thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.thumbnail.setFixedSize(160, 92)
-        self.thumbnail.setStyleSheet("background: #F0F2F5; border-radius: 8px; color: #B7BDC8; font-size: 28px;")
         card_layout.addWidget(self.thumbnail)
 
         details = QVBoxLayout()
@@ -865,17 +863,31 @@ class MainWindow(QMainWindow):
                 self.sniff_clipboard()
             elif event.type() == QEvent.Type.KeyPress:
                 if event.matches(QKeySequence.StandardKey.Paste):
-                    self.paste_smart()
-                    return True
+                    try:
+                        text = QApplication.clipboard().text().strip()
+                        normalize_url(text)
+                        is_valid = True
+                    except Exception:
+                        is_valid = False
+                    if is_valid:
+                        self.paste_smart()
+                        return True
         return super().eventFilter(watched, event)
 
     def _on_url_text_changed(self, text):
         if hasattr(self, "clear_btn"):
             self.clear_btn.setVisible(bool(text.strip()))
-        if hasattr(self, "clipboard_badge") and not text.strip():
-            self.clipboard_badge.hide()
+        if hasattr(self, "clipboard_badge"):
+            if not text.strip() or text.strip() != getattr(self, "_sniffed_text", ""):
+                self.clipboard_badge.hide()
 
     def clear_url(self):
+        try:
+            cb = QApplication.clipboard().text().strip()
+        except Exception:
+            cb = None
+        self._dismissed_clipboard = cb
+        self._sniffed_text = ""
         self.url_input.clear()
         self.invalidate_video()
         if hasattr(self, "clear_btn"):
@@ -906,11 +918,17 @@ class MainWindow(QMainWindow):
             self.analyze()
 
     def sniff_clipboard(self) -> bool:
+        if hasattr(self, "pages") and self.pages.currentIndex() != 0:
+            return False
+        if self.video is not None or self.downloader is not None or self.inspection is not None:
+            return False
         try:
             clipboard = QApplication.clipboard().text().strip()
         except Exception:
             return False
         if not clipboard:
+            return False
+        if clipboard == getattr(self, "_dismissed_clipboard", None):
             return False
         try:
             normalize_url(clipboard)
@@ -922,6 +940,8 @@ class MainWindow(QMainWindow):
         current_text = self.url_input.text().strip()
         if clipboard == current_text:
             return False
+        self._dismissed_clipboard = None
+        self._sniffed_text = clipboard
         self.url_input.setText(clipboard)
         if hasattr(self, "clear_btn"):
             self.clear_btn.show()
@@ -936,6 +956,12 @@ class MainWindow(QMainWindow):
             self.navigation.button(1).setChecked(True)
 
     def reset_for_next(self):
+        try:
+            cb = QApplication.clipboard().text().strip()
+        except Exception:
+            cb = None
+        self._dismissed_clipboard = cb
+        self._sniffed_text = ""
         if hasattr(self, "added_actions"):
             self.added_actions.hide()
         self.clear_url()

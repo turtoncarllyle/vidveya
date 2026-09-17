@@ -677,6 +677,33 @@ QLabel#CodecBadge {{
     font-size: 11px;
     font-weight: 600;
 }}
+QFrame#AddedBanner {{
+    background: {tokens['badge_green_bg']};
+    border: 1px solid {tokens['badge_green_text']};
+    border-radius: 10px;
+}}
+QLabel#AddedBannerLabel {{
+    color: {tokens['badge_green_text']};
+    font-weight: 600;
+    font-size: 14px;
+    background: transparent;
+}}
+QLabel#ClipboardBadge {{
+    background: {tokens['accent_tint']};
+    color: {tokens['accent']};
+    border: 1px solid {tokens['accent_tint_border']};
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: 600;
+}}
+QLabel#ThumbnailPlaceholder {{
+    background: {tokens['bg_subtle']};
+    border: 1px solid {tokens['border']};
+    border-radius: 8px;
+    color: {tokens['text_faint']};
+    font-size: 28px;
+}}
 """
 
 STYLE = get_theme_stylesheet("light")

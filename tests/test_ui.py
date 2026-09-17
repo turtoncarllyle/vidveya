@@ -560,6 +560,10 @@ def test_stylesheet_contains_modern_tokens():
         assert "QLabel#RetryCountdown" in qss
         assert "QLabel#ProgressValue" in qss
         assert "QLabel#CodecBadge" in qss
+        assert "QFrame#AddedBanner" in qss
+        assert "QLabel#AddedBannerLabel" in qss
+        assert "QLabel#ClipboardBadge" in qss
+        assert "QLabel#ThumbnailPlaceholder" in qss
 
 
 def test_new_modern_i18n_keys():
@@ -780,7 +784,9 @@ def test_clipboard_sniffing_event_triggers(make_window, monkeypatch):
     window.eventFilter(window.url_input, focus_event)
     assert sniff_calls == 2
 
-    # 3. Ctrl+V key press on url_input triggers paste_smart
+    # 3. Ctrl+V key press on url_input with valid YouTube URL triggers paste_smart
+    from PySide6.QtWidgets import QApplication
+    monkeypatch.setattr(QApplication.clipboard(), 'text', lambda: 'https://www.youtube.com/watch?v=YE7VzlLtp-4')
     paste_calls = 0
     def fake_paste():
         nonlocal paste_calls
@@ -791,4 +797,65 @@ def test_clipboard_sniffing_event_triggers(make_window, monkeypatch):
     handled = window.eventFilter(window.url_input, paste_event)
     assert handled is True
     assert paste_calls == 1
+
+
+def test_clipboard_sniffing_dismissal_and_scope_guard(make_window, monkeypatch):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication
+
+    window = make_window()
+    window.show()
+
+    valid_url = "https://www.youtube.com/watch?v=YE7VzlLtp-4"
+    valid_url_2 = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    monkeypatch.setattr(QApplication.clipboard(), "text", lambda: valid_url)
+
+    # 1. Initially sniff fills the URL
+    assert window.sniff_clipboard() is True
+    assert window.url_input.text() == valid_url
+    assert window.clipboard_badge.isVisible()
+
+    # 2. Editing text hides the badge
+    window.url_input.setText(valid_url + "edit")
+    assert window.clipboard_badge.isHidden()
+
+    # 3. User clicks clear_btn: dismissed clipboard prevents revival on focus
+    window.clear_btn.click()
+    assert window.url_input.text() == ""
+    # Simulating FocusIn
+    focus_in = QEvent(QEvent.Type.FocusIn)
+    window.eventFilter(window.url_input, focus_in)
+    assert window.url_input.text() == ""  # Did NOT revive!
+    assert window.sniff_clipboard() is False
+
+    # 4. When clipboard content changes to a new URL, sniffing works again
+    monkeypatch.setattr(QApplication.clipboard(), "text", lambda: valid_url_2)
+    assert window.sniff_clipboard() is True
+    assert window.url_input.text() == valid_url_2
+
+    # 5. reset_for_next() also dismisses current clipboard
+    window.reset_for_next()
+    assert window.url_input.text() == ""
+    window.eventFilter(window.url_input, focus_in)
+    assert window.url_input.text() == ""  # Did NOT revive!
+
+    # 6. Cross-page scope guard: not on page 0 -> returns False
+    monkeypatch.setattr(QApplication.clipboard(), "text", lambda: valid_url)
+    window.pages.setCurrentIndex(1)
+    assert window.sniff_clipboard() is False
+    assert window.url_input.text() == ""
+
+    # 7. State split guard: on page 0, but video is already loaded or downloading
+    window.pages.setCurrentIndex(0)
+    window.video = {"title": "Existing"}
+    assert window.sniff_clipboard() is False
+    assert window.url_input.text() == ""
+    window.video = None
+
+    # 8. KeyPress paste fallback when clipboard is invalid
+    monkeypatch.setattr(QApplication.clipboard(), "text", lambda: "plain search text")
+    paste_event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier)
+    handled = window.eventFilter(window.url_input, paste_event)
+    assert handled is False  # falls back to native QLineEdit paste
 
