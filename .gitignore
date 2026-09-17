@@ -17,3 +17,5 @@ scratch/
 /*.png
 /*.db
 uv.lock
+
+.pytest_tmp/
