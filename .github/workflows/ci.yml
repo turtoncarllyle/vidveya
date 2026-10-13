@@ -12,7 +12,7 @@ jobs:
         include:
           - runner: windows-latest
             architecture: x64
-          - runner: macos-13
+          - runner: macos-15-intel
             architecture: x64
           - runner: macos-14
             architecture: arm64
