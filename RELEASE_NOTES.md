@@ -22,6 +22,8 @@
 
 Source and package checks run in CI on all three runners. The local environment is Windows, so macOS GUI startup, component diagnostics, and DMG checks rely on the matching runner. Real 4K, 8K, Shorts, and member-video network regression still requires an account with the corresponding legal access.
 
+# v0.1.8
+
 ## 中文
 
 - 新增统一“传输列表”工作台，以“下载任务 / 下载记录”标签切换，支持连续添加、搜索和并行下载：默认 3 个任务，设置可调整为 1～5 个；各任务独立显示进度、速度、剩余时间及合并/校验状态。
