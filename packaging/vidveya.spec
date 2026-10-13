@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 from PyInstaller.utils.hooks import collect_all, copy_metadata
+from PyInstaller.building.osx import BUNDLE
 
 root = Path(SPECPATH).parent
 common_data = []
@@ -52,3 +53,20 @@ else:
                      console=True, upx=False)
 collection = COLLECT(gui_exe, worker_exe, gui.binaries, gui.datas, worker.binaries, worker.datas,
                      strip=False, upx=False, name='VidVeya')
+
+# Let PyInstaller construct the macOS bundle itself.  The macOS bootloader
+# expects the Python framework and native libraries under Contents/Frameworks;
+# manually moving a normal onedir output into Contents/MacOS breaks that
+# contract and produces "Failed to load Python shared library" at startup.
+if sys.platform == 'darwin':
+    app = BUNDLE(
+        collection,
+        name='VidVeya.app',
+        version='0.2.0',
+        bundle_identifier='com.vidveya.app',
+        info_plist={
+            'CFBundleVersion': '0.2.0',
+            'LSMinimumSystemVersion': '12.0',
+            'NSHighResolutionCapable': True,
+        },
+    )

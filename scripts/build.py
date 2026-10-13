@@ -40,41 +40,6 @@ def copy_documentation(destination: Path):
         shutil.copyfile(ROOT / filename, destination / filename)
 
 
-def wrap_macos_app(source: Path) -> Path:
-    app = ROOT / "dist" / "VidVeya.app"
-    if app.exists():
-        shutil.rmtree(app)
-    contents = app / "Contents"
-    macos = contents / "MacOS"
-    resources = contents / "Resources"
-    macos.mkdir(parents=True)
-    resources.mkdir(parents=True)
-    for child in source.iterdir():
-        shutil.move(str(child), str(macos / child.name))
-    source.rmdir()
-    copy_documentation(resources / "Documentation")
-    (contents / "Info.plist").write_text(
-        """<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>CFBundleDisplayName</key><string>VidVeya</string>
-<key>CFBundleExecutable</key><string>VidVeya</string>
-<key>CFBundleIdentifier</key><string>com.vidveya.app</string>
-<key>CFBundleName</key><string>VidVeya</string>
-<key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.2.0</string>
-<key>CFBundleVersion</key><string>0.2.0</string>
-<key>LSMinimumSystemVersion</key><string>12.0</string>
-<key>NSHighResolutionCapable</key><true/>
-<key>NSPrincipalClass</key><string>NSApplication</string>
-</dict></plist>
-""", encoding="utf-8")
-    for executable in (macos / "VidVeya", macos / "VidVeya.Worker"):
-        if executable.exists():
-            executable.chmod(0o755)
-    return app
-
-
 def component_environment(worker: Path) -> dict[str, str]:
     environment = os.environ.copy()
     environment["PYTHONUTF8"] = "1"
@@ -82,9 +47,18 @@ def component_environment(worker: Path) -> dict[str, str]:
         environment["PATH"] = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32")
     else:
         environment["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
-        library_dir = worker.parent / "_internal" / "components" / "lib"
-        if library_dir.is_dir():
-            environment["DYLD_LIBRARY_PATH"] = str(library_dir)
+        # PyInstaller's native BUNDLE places binaries in Contents/Frameworks
+        # and data in Contents/Resources (with a cross-link in Frameworks).
+        # Keep the old manually wrapped layout as a package-only fallback so
+        # existing local build directories remain diagnosable.
+        candidates = (
+            worker.parent.parent / "Frameworks" / "components" / "lib",
+            worker.parent / "_internal" / "components" / "lib",
+        )
+        for library_dir in candidates:
+            if library_dir.is_dir():
+                environment["DYLD_LIBRARY_PATH"] = str(library_dir)
+                break
     environment.pop("PYTHONPATH", None)
     environment.pop("VIRTUAL_ENV", None)
     return environment
@@ -113,7 +87,11 @@ def macos_dmg(app: Path, path: Path):
 
 
 def macos_fix_component_rpaths(app: Path):
-    components = app / "Contents" / "MacOS" / "_internal" / "components"
+    candidates = (
+        app / "Contents" / "Frameworks" / "components",
+        app / "Contents" / "MacOS" / "_internal" / "components",
+    )
+    components = next((path for path in candidates if path.is_dir()), candidates[0])
     for name in ("ffmpeg", "ffprobe"):
         executable = components / name
         if executable.exists():
@@ -167,7 +145,11 @@ def main():
         run(ROOT / ".tooling" / "inno" / "ISCC.exe", "packaging/installer.iss")
         assets = [archive, release / f"VidVeya-{VERSION}-win-x64-setup.exe"]
     else:
-        app = wrap_macos_app(destination)
+        generated_app = ROOT / "dist" / "VidVeya.app"
+        if not generated_app.exists():
+            raise RuntimeError("PyInstaller 没有生成 VidVeya.app；请检查 macOS BUNDLE 构建日志。")
+        app = generated_app
+        copy_documentation(app / "Contents" / "Resources" / "Documentation")
         macos_fix_component_rpaths(app)
         worker = app / "Contents" / "MacOS" / "VidVeya.Worker"
         verify_worker(worker)
