@@ -2,9 +2,9 @@
 
 [简体中文](README.md) · [English](README.en.md)
 
-**Windows 本地 YouTube 视频下载助手 · 保留画面与声音 / Local Windows YouTube video downloader · video and audio preserved**
+**本地 YouTube 视频下载助手 · 保留画面与声音 / Local YouTube video downloader · video and audio preserved**
 
-VidVeya 是一个独立的 Windows 桌面应用：粘贴 YouTube 或 Shorts 链接，选择源视频实际提供的清晰度，下载完成后由 FFmpeg 合并并由 ffprobe 验证视频轨和音频轨。下载和合并都在本机完成，没有 VidVeya 服务端，也不要求用户另外安装 Python、Node.js、FFmpeg 或 Deno。
+VidVeya 是一个独立的 Windows 与 macOS 桌面应用：粘贴 YouTube 或 Shorts 链接，选择源视频实际提供的清晰度，下载完成后由 FFmpeg 合并并由 ffprobe 验证视频轨和音频轨。下载和合并都在本机完成，没有 VidVeya 服务端，也不要求用户另外安装 Python、Node.js、FFmpeg 或 Deno。
 
 ## 产品定位：普通用户开箱即用
 
@@ -18,8 +18,10 @@ VidVeya 是一个独立的 Windows 桌面应用：粘贴 YouTube 或 Shorts 链�
 
 从 [GitHub Releases](https://github.com/turtoncarllyle/vidveya/releases) 下载：
 
-- `VidVeya-*-win-x64-setup.exe`：推荐，当前用户安装，不需要管理员权限。
-- `VidVeya-*-win-x64-portable.zip`：完整解压后运行 `VidVeya.exe`。
+- `VidVeya-*-win-x64-setup.exe`：Windows 当前用户安装包，不需要管理员权限。
+- `VidVeya-*-win-x64-portable.zip`：Windows 便携包，完整解压后运行 `VidVeya.exe`。
+- `VidVeya-*-macos-arm64.dmg` / `.zip`：Apple Silicon Mac（M 系列）。
+- `VidVeya-*-macos-x86_64.dmg` / `.zip`：Intel Mac。
 
 应用启动时会检查内置组件状态，常规使用直接采用随应用交付的组件。
 
@@ -36,11 +38,11 @@ VidVeya 是一个独立的 Windows 桌面应用：粘贴 YouTube 或 Shorts 链�
 
 每个清晰度选项都必须有音频：分离的视频流和音频流会自动合并；合并完成后会检查画面、声音、清晰度和时长。音频不可用或验证失败时任务会失败，不会把无声文件标记为成功。源视频本身静音时，文件会保留源视频的静音状态。
 
-下载并校验成功后默认播放一次系统提示音，最小化时也会提醒。在“设置 → 下载任务 → 完成提醒”取消“下载完成后播放提示音”即可关闭，修改会自动保存。失败或取消不会播放成功提示音；提示音遵循 Windows 的声音和音量设置。
+下载并校验成功后默认播放一次系统提示音，最小化时也会提醒。在“设置 → 下载任务 → 完成提醒”取消“下载完成后播放提示音”即可关闭，修改会自动保存。失败或取消不会播放成功提示音；提示音使用当前系统的声音和音量设置。
 
-“下载完成后显示桌面通知”**默认关闭**，可与提示音分别设置。开启后，校验成功时屏幕右下角会显示视频名称和清晰度，最小化时也可收到。每个视频都有“打开文件”和“打开文件夹”按钮，分别用默认播放器打开视频、在资源管理器中选中文件；点击“查看任务”返回任务页。弹窗位于当前屏幕工作区的右下角、任务栏上方，约 8 秒后自动收起，不抢走当前窗口焦点；鼠标悬停时暂停收起，移开后延长 4 秒；1 秒内完成的任务合并提醒，最多显示 3 个视频，其余可进入任务页查看。
+“下载完成后显示桌面通知”**默认关闭**，可与提示音分别设置。开启后，校验成功时屏幕右下角会显示视频名称和清晰度，最小化时也可收到。每个视频都有“打开文件”和“打开文件夹”按钮，分别用默认播放器打开视频、在文件管理器中定位文件；点击“查看任务”返回任务页。弹窗位于当前屏幕工作区的右下角、任务栏上方，约 8 秒后自动收起，不抢走当前窗口焦点；鼠标悬停时暂停收起，移开后延长 4 秒；1 秒内完成的任务合并提醒，最多显示 3 个视频，其余可进入任务页查看。
 
-### 多任务与自动重试（0.1.8）
+### 多任务与自动重试（0.2.0）
 
 - 默认同时执行 **3 个**任务，其余按添加顺序排队。设置中可调整为 **1～5 个**：调高立即补位，调低等待已有任务结束。解析其他链接不影响正在下载的任务。
 - “传输列表”将下载任务和下载记录合并到一个工作台，可在两个标签之间切换并搜索。“暂停队列”停止启动新任务，正在下载、合并和校验的任务继续执行；“继续队列”恢复等待中的任务。
@@ -61,7 +63,7 @@ VidVeya 是一个独立的 Windows 桌面应用：粘贴 YouTube 或 Shorts 链�
 
 下载时，侧栏汇总运行数量、排队数量和总下载速度，点击可进入任务页。完成后可点击“播放视频”或“打开文件夹”；下载记录也提供播放入口。
 
-### 下载记录与 Delete 快捷键（0.1.8）
+### 下载记录与 Delete 快捷键（0.2.0）
 
 - 点击“视频、清晰度、状态、创建时间”的列头排序，再次点击切换升序/降序，箭头显示当前方向。清晰度按数值排列，时间显示为电脑本地时区；排序和刷新后仍选中原任务。
 - 右键记录可播放、打开文件夹、重新下载、复制链接或标题、删除记录。双击已有文件的记录可播放；文件不存在的已结束任务可重新下载。
@@ -117,7 +119,14 @@ YouTube 可能会更新浏览器中的登录 Cookie。如果刚导出的文件�
 3. 在**同一个标签页**打开 [YouTube robots.txt](https://www.youtube.com/robots.txt)，保持只有这一个无痕标签页，再用扩展导出 YouTube 的 Netscape Cookie TXT。
 4. 导出后直接关闭无痕窗口，再将文件导入 VidVeya；不要继续在该无痕会话中浏览 YouTube。此方法可减少浏览器更新 Cookie 导致的失效，但不保证登录态永久有效。
 
-Cookie 相当于登录凭据，请勿发送给他人或上传到 GitHub。VidVeya 使用 Windows DPAPI 在本机加密保存登录态，下载时向 YouTube 提供它以验证权限。导入成功后可以删除导出的明文 TXT 文件。
+Cookie 相当于登录凭据，请勿发送给他人或上传到 GitHub。VidVeya 在本机安全保存登录态：Windows 使用 DPAPI，macOS 使用系统 Keychain；下载时向 YouTube 提供它以验证权限。导入成功后可以删除导出的明文 TXT 文件。
+
+## 平台支持与当前边界
+
+- v0.2.0 支持 Windows 10/11 x64 和 macOS 12+；macOS 同时提供 Intel 与 Apple Silicon 原生包。
+- 所有发行包都内置 Python、Qt、yt-dlp、yt-dlp-ejs、Deno、FFmpeg 和 ffprobe，用户无需安装 Python、Node.js、Deno、FFmpeg 或配置 `PATH`。
+- macOS 包当前未签名、未 notarize。首次打开请在 Finder 中右键 `VidVeya.app`，选择“打开”，并在系统确认窗口中再次选择“打开”。
+- Windows Cookie 使用 DPAPI，macOS Cookie 使用 Keychain；两种系统的登录态不会自动迁移，请在 Mac 上重新导入。
 
 ## 当前边界
 
@@ -128,7 +137,7 @@ Cookie 相当于登录凭据，请勿发送给他人或上传到 GitHub。VidVey
 
 ## 开发
 
-以下步骤仅面向从源码构建的开发者，需要 Python 3.12 x64。构建脚本会下载并校验固定版本的 Deno、FFmpeg 和 Inno Setup；运行组件随安装包和便携包交付，不提交到源码仓库。
+以下步骤仅面向从源码构建的开发者，需要 Python 3.12。Windows 构建需要 x64 Python，macOS 构建会按 runner 架构生成 Intel 或 Apple Silicon 包。构建脚本会下载并校验固定版本的 Deno、FFmpeg（macOS 使用对应架构的 LGPL 构建）和 Windows Inno Setup；运行组件随发行包交付，不提交到源码仓库。
 
 ```powershell
 py -3.12 -m venv .venv
@@ -139,13 +148,15 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe scripts\build.py
 ```
 
-构建产物位于 `release/`：安装包、便携 ZIP 和 SHA-256 校验文件。真实公开视频下载回归测试：
+macOS 使用相同的 Python 命令（虚拟环境中的解释器路径为 `.venv/bin/python`）；在对应的 Intel 或 Apple Silicon Mac 上运行 `scripts/provision.py` 和 `scripts/build.py`，会生成该架构的 `.app`、DMG 和 ZIP。
+
+构建产物位于 `release/`：Windows 安装包/便携 ZIP，或 macOS DMG/ZIP，以及统一的 SHA-256 校验文件。真实公开视频下载回归测试：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\live_check.py --resolution 360
 ```
 
-推送 `v*.*.*` 标签后，GitHub Actions 会构建安装包和便携包并创建草稿 Release。核对版本、安装/便携版运行结果及 SHA-256 后，使用 `gh release edit <标签> --draft=false --latest --repo turtoncarllyle/vidveya` 正式发布。
+推送 `v*.*.*` 标签后，GitHub Actions 会在 Windows、macOS Intel 和 macOS Apple Silicon runner 上构建六个发行附件并创建草稿 Release。核对版本、安装/便携版运行结果及 SHA-256 后，使用 `gh release edit <标签> --draft=false --latest --repo turtoncarllyle/vidveya` 正式发布。
 
 ## 项目来源与许可
 

@@ -154,10 +154,10 @@ TRANSLATIONS = {
         "set_proxy_placeholder": "例如 http://127.0.0.1:7890；留空使用系统网络设置",
         "set_proxy_note": "浏览器中的代理扩展不会自动影响桌面助手。代理配置仅保存在本机。",
         "set_sec_window": "关闭窗口时",
-        "set_close_minimize": "最小化到任务栏（继续下载）",
+        "set_close_minimize": "最小化到任务栏 / Dock（继续下载）",
         "set_close_exit": "退出软件",
         "set_close_prompt": "关闭时显示操作提示",
-        "set_close_note": "最小化后可从任务栏重新唤起；可随时在设置中更改此行为。",
+        "set_close_note": "最小化后可从任务栏或 Dock 重新唤起；可随时在设置中更改此行为。",
         "set_sound_label": "完成提醒",
         "set_completion_sound": "下载完成后播放提示音",
         "set_completion_sound_note": "校验画面、声音和时长通过后提醒，最小化时也会播放。",
@@ -177,7 +177,7 @@ TRANSLATIONS = {
         "set_btn_import": "导入 Cookie",
         "set_btn_clear": "清除",
         "set_btn_cookie_help": "如何导入 Cookie？",
-        "set_auth_notice_saved": "已加密保存登录态，仅此 Windows 用户可读取。",
+        "set_auth_notice_saved": "已安全保存登录态；Windows 使用 DPAPI，macOS 使用 Keychain。",
         "set_auth_notice_empty": "下载会员或私有视频时，请导入已有观看权限账号的 Netscape Cookie TXT。",
         "set_sec_components": "内置组件",
         "set_btn_recheck": "重新检查",
@@ -197,7 +197,7 @@ TRANSLATIONS = {
             "3. 保持在 YouTube 页面，点击扩展图标，导出 Netscape 格式的 cookies.txt 文件。\n"
             "4. 在 VidVeya 设置中点击「导入 Cookie」选中该文件。\n\n"
             "【安全保证】\n"
-            "VidVeya 采用 Windows DPAPI 硬件级加密保存凭据，绝不上报服务器；导入成功后建议直接删除明文 TXT 文件。"
+            "VidVeya 仅在本机保存凭据：Windows 使用 DPAPI，macOS 使用系统 Keychain，绝不上报服务器；导入成功后建议直接删除明文 TXT 文件。"
         ),
         "btn_ok": "确定",
         "btn_cancel": "取消",
@@ -209,7 +209,7 @@ TRANSLATIONS = {
         "btn_remember": "记住我的选择，不再提示",
         "dialog_close_title": "关闭 VidVeya",
         "dialog_close_text": "请选择关闭窗口时的操作：",
-        "dialog_close_minimize_msg": "关闭窗口后将最小化到任务栏，下载会继续。",
+        "dialog_close_minimize_msg": "关闭窗口后将最小化到任务栏或 Dock，下载会继续。",
         "dialog_close_exit_msg": "关闭窗口后将退出 VidVeya。",
         "dialog_exit_confirm_title": "确认退出",
         "dialog_downloading_exit_text": "当前有下载正在进行中，退出将取消当前任务。\n确定要退出吗？",
@@ -228,7 +228,7 @@ TRANSLATIONS = {
         "file_filter_text": "文本文件 (*.txt);;所有文件 (*.*)",
         "select_save_dir": "选择保存目录",
         "select_cookie_file": "选择 Cookie 文件",
-        "app_already_running": "VidVeya 已经在运行中。\n请检查任务栏或右下角托盘图标。",
+        "app_already_running": "VidVeya 已经在运行中。\n请检查任务栏、Dock 或右下角托盘图标。",
         "app_already_running_title": "提示",
         "state_starting": "准备下载",
         "state_downloading": "正在下载",
@@ -405,10 +405,10 @@ TRANSLATIONS = {
         "set_proxy_placeholder": "e.g. http://127.0.0.1:7890; leave blank for system default",
         "set_proxy_note": "Browser proxy extensions do not affect the desktop app. Stored locally.",
         "set_sec_window": "On Window Close",
-        "set_close_minimize": "Minimize to taskbar (continue download)",
+        "set_close_minimize": "Minimize to taskbar / Dock (continue download)",
         "set_close_exit": "Exit VidVeya",
         "set_close_prompt": "Show prompt when closing",
-        "set_close_note": "Restore from the taskbar; you can change this behavior anytime in settings.",
+        "set_close_note": "Restore from the taskbar or Dock; you can change this behavior anytime in settings.",
         "set_sound_label": "Completion alerts",
         "set_completion_sound": "Play a sound when a download completes",
         "set_completion_sound_note": "Plays after video, audio, and duration verification, even when minimized.",
@@ -428,7 +428,7 @@ TRANSLATIONS = {
         "set_btn_import": "Import Cookie",
         "set_btn_clear": "Clear",
         "set_btn_cookie_help": "How to import Cookie?",
-        "set_auth_notice_saved": "Session encrypted with DPAPI; accessible only by current Windows user.",
+        "set_auth_notice_saved": "Session stored securely; Windows uses DPAPI and macOS uses Keychain.",
         "set_auth_notice_empty": "For member-only or private videos, import a Netscape Cookie TXT.",
         "set_sec_components": "Built-in Components",
         "set_btn_recheck": "Recheck",
@@ -448,7 +448,7 @@ TRANSLATIONS = {
             "3. On youtube.com, click the extension icon and export the Netscape format cookies.txt file.\n"
             "4. In VidVeya Settings, click 'Import Cookie' and select the file.\n\n"
             "[Security Guarantee]\n"
-            "VidVeya encrypts cookies locally via Windows DPAPI and never uploads them. You can delete the plain TXT after importing."
+            "VidVeya stores cookies locally using Windows DPAPI or macOS Keychain and never uploads them. You can delete the plain TXT after importing."
         ),
         "btn_ok": "OK",
         "btn_cancel": "Cancel",
@@ -460,7 +460,7 @@ TRANSLATIONS = {
         "btn_remember": "Remember my choice and do not ask again",
         "dialog_close_title": "Close VidVeya",
         "dialog_close_text": "Please select what to do when closing the window:",
-        "dialog_close_minimize_msg": "Closing the window will minimize it to the taskbar; downloads will continue.",
+        "dialog_close_minimize_msg": "Closing the window will minimize it to the taskbar or Dock; downloads will continue.",
         "dialog_close_exit_msg": "Closing the window will exit VidVeya.",
         "dialog_exit_confirm_title": "Confirm Exit",
         "dialog_downloading_exit_text": "Downloads are in progress. Exiting will cancel active tasks.\nAre you sure you want to exit?",
@@ -479,7 +479,7 @@ TRANSLATIONS = {
         "file_filter_text": "Text Files (*.txt);;All Files (*.*)",
         "select_save_dir": "Select Download Directory",
         "select_cookie_file": "Select Cookie File",
-        "app_already_running": "VidVeya is already running.\nPlease check the taskbar or system tray.",
+        "app_already_running": "VidVeya is already running.\nPlease check the taskbar, Dock, or system tray.",
         "app_already_running_title": "Notice",
         "state_starting": "Preparing",
         "state_downloading": "Downloading",

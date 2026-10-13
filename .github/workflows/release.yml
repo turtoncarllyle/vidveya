@@ -8,14 +8,27 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: windows-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            runner: windows-latest
+            architecture: x64
+          - platform: macos-x86_64
+            runner: macos-13
+            architecture: x64
+          - platform: macos-arm64
+            runner: macos-14
+            architecture: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-          architecture: x64
+          architecture: ${{ matrix.architecture }}
           cache: pip
       - run: python -m pip install -r requirements-build.lock
       - run: python -m pytest -q
@@ -23,12 +36,42 @@ jobs:
           QT_QPA_PLATFORM: offscreen
       - run: python -m ruff check src scripts tests
       - run: python scripts/build.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: release-*
+          merge-multiple: false
+      - name: Assemble release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf release
+          mkdir -p release
+          find artifacts -type f \( -name '*.exe' -o -name '*.zip' -o -name '*.dmg' \) -exec cp {} release/ \;
+          notes=$(find artifacts -name RELEASE_NOTES_CURRENT.md -print -quit)
+          test -n "$notes"
+          cp "$notes" release/RELEASE_NOTES_CURRENT.md
+          (cd release && sha256sum VidVeya-* > SHA256SUMS.txt)
+          test "$(find release -maxdepth 1 -type f \( -name '*.exe' -o -name '*.zip' -o -name '*.dmg' \) | wc -l)" -eq 6
       - uses: softprops/action-gh-release@v2
         with:
           name: VidVeya ${{ github.ref_name }}
           draft: true
           body_path: release/RELEASE_NOTES_CURRENT.md
           files: |
-            release/VidVeya-*-win-x64-setup.exe
-            release/VidVeya-*-win-x64-portable.zip
+            release/VidVeya-*.exe
+            release/VidVeya-*.zip
+            release/VidVeya-*.dmg
             release/SHA256SUMS.txt

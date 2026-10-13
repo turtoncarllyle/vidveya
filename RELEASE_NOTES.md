@@ -1,4 +1,26 @@
-# v0.1.8
+# v0.2.0
+
+## 中文
+
+- 支持 Windows 10/11 x64、macOS 12+ Intel 和 Apple Silicon；Windows 保留安装包与便携包，macOS 新增原生 DMG 和 ZIP。
+- 所有发行包继续内置 Python、Qt、yt-dlp、yt-dlp-ejs、Deno、FFmpeg 和 ffprobe，普通用户无需安装运行环境或配置 PATH。
+- 增加统一的平台抽象：默认目录、数据目录、文件打开、目录定位、完成提示音和 Worker 进程树处理均按 Windows/macOS 适配；Windows 下载、合并、重试和退出逻辑保持兼容。
+- Windows 使用 DPAPI 保存 Cookie，macOS 使用系统 Keychain 保存 Cookie 内容；Cookie 不写入明文数据库或日志，Mac 需要重新导入登录态。
+- macOS 包当前未签名、未 notarize，首次启动需要在 Finder 中右键应用并选择“打开”。
+- GitHub Actions 使用 Windows、macOS Intel 和 macOS Apple Silicon 构建矩阵，并为六个发行附件生成统一 SHA-256 清单。
+
+本次源码和打包验证由 CI 在三个 runner 上执行；当前本地 Windows 环境无法直接启动 macOS GUI，macOS 真机启动、组件诊断和 DMG 验收以对应 runner 结果为准。真实 4K、8K、Shorts 和会员视频仍需使用具备相应权限的账号进行网络回归。
+
+## English
+
+- Support Windows 10/11 x64 and macOS 12+ on both Intel and Apple Silicon. Keep the Windows installer and portable ZIP, and add native macOS DMG and ZIP packages.
+- Keep Python, Qt, yt-dlp, yt-dlp-ejs, Deno, FFmpeg, and ffprobe inside every package so everyday users do not install runtimes or configure PATH.
+- Add one platform adapter for default/data directories, file and folder actions, completion sounds, and worker process-tree cleanup while preserving Windows download, merge, retry, and shutdown behavior.
+- Store Windows cookies with DPAPI and macOS cookies in the system Keychain. Cookie content is not written to plaintext databases or logs; Mac users must import their session again.
+- macOS packages are currently unsigned and not notarized; first launch requires Finder's right-click **Open** flow.
+- Use a Windows, Intel macOS, and Apple Silicon macOS GitHub Actions matrix, with one SHA-256 manifest for all six release assets.
+
+Source and package checks run in CI on all three runners. The local environment is Windows, so macOS GUI startup, component diagnostics, and DMG checks rely on the matching runner. Real 4K, 8K, Shorts, and member-video network regression still requires an account with the corresponding legal access.
 
 ## 中文
 

@@ -2,9 +2,9 @@
 
 [简体中文](README.md) · [English](README.en.md)
 
-**A local Windows YouTube downloader that keeps video and audio together / Windows 本地 YouTube 视频下载助手 · 保留画面与声音**
+**A local YouTube downloader that keeps video and audio together / 本地 YouTube 视频下载助手 · 保留画面与声音**
 
-VidVeya is a standalone Windows desktop app. Paste a YouTube or Shorts URL, choose a source resolution, and download it locally. yt-dlp resolves the streams, FFmpeg merges separate video and audio, and ffprobe verifies the result before VidVeya reports success. No VidVeya server is involved, and users do not need to install Python, Node.js, FFmpeg, or Deno separately.
+VidVeya is a standalone Windows and macOS desktop app. Paste a YouTube or Shorts URL, choose a source resolution, and download it locally. yt-dlp resolves the streams, FFmpeg merges separate video and audio, and ffprobe verifies the result before VidVeya reports success. No VidVeya server is involved, and users do not need to install Python, Node.js, FFmpeg, or Deno separately.
 
 ## Product goal: ready to use for everyday users
 
@@ -18,8 +18,10 @@ These components account for a substantial part of the package size and save use
 
 Get the latest files from [GitHub Releases](https://github.com/turtoncarllyle/vidveya/releases):
 
-- `VidVeya-*-win-x64-setup.exe`: recommended per-user installer; administrator rights are not required.
-- `VidVeya-*-win-x64-portable.zip`: fully extract the ZIP and run `VidVeya.exe`.
+- `VidVeya-*-win-x64-setup.exe`: Windows per-user installer; administrator rights are not required.
+- `VidVeya-*-win-x64-portable.zip`: Windows portable package; extract it and run `VidVeya.exe`.
+- `VidVeya-*-macos-arm64.dmg` / `.zip`: native Apple Silicon Mac package.
+- `VidVeya-*-macos-x86_64.dmg` / `.zip`: native Intel Mac package.
 
 The app checks its bundled components at startup and uses them for normal operation.
 
@@ -36,11 +38,11 @@ The download card shows a progress bar, percentage, transferred/total size, spee
 
 Every option must have audio. Separate streams are merged automatically, then the result is checked for video, audio, selected resolution, and duration. A missing audio track or failed verification always fails the job; a silent source remains silent.
 
-A system sound plays once after a download passes verification, including while minimized. Disable **Play a sound when a download completes** under **Settings → Download Tasks → Completion alerts** to turn it off; the preference saves automatically. Failed or cancelled downloads do not play the success sound. Playback follows Windows sound and volume settings.
+A system sound plays once after a download passes verification, including while minimized. Disable **Play a sound when a download completes** under **Settings → Download Tasks → Completion alerts** to turn it off; the preference saves automatically. Failed or cancelled downloads do not play the success sound. Playback follows the current operating system's sound and volume settings.
 
-**Show a desktop notification when a download completes** is **off by default** and can be configured separately from sound. When enabled, a notification at the bottom right shows the video title and quality after verification, even while minimized. Each video has **Open file** and **Open Folder** buttons to launch the default player or select the file in Explorer. **View tasks** returns to Download Tasks. It sits at the bottom right of the current screen’s work area, above the taskbar, and dismisses after about 8 seconds without taking focus. Hovering keeps it open; moving away allows another 4 seconds. Completions within one second share a notification showing up to 3 videos, with remaining results available on the task page.
+**Show a desktop notification when a download completes** is **off by default** and can be configured separately from sound. When enabled, a notification at the bottom right shows the video title and quality after verification, even while minimized. Each video has **Open file** and **Open Folder** buttons to launch the default player or reveal the file in the system file manager. **View tasks** returns to Download Tasks. It sits at the bottom right of the current screen’s work area, above the taskbar, and dismisses after about 8 seconds without taking focus. Hovering keeps it open; moving away allows another 4 seconds. Completions within one second share a notification showing up to 3 videos, with remaining results available on the task page.
 
-### Multiple downloads and automatic retries (0.1.8)
+### Multiple downloads and automatic retries (0.2.0)
 
 - Run **3 tasks** concurrently by default; additional tasks wait in FIFO order. Settings allow **1–5** concurrent tasks. Increasing the limit fills free slots immediately; lowering it lets existing tasks finish. Analyzing another URL does not interrupt downloads.
 - **Transfers** brings tasks and history into one workbench with searchable tabs. **Pause Queue** stops starting new tasks while running downloads, merging, and verification continue. **Resume Queue** starts waiting tasks again.
@@ -61,7 +63,7 @@ Choose light, dark, or system theme in **Settings → Appearance & Language**, o
 
 The sidebar summarizes running and queued counts and total speed; click it to open Download Tasks. Completed downloads have **Play Video** and **Open Folder** shortcuts; history also provides playback.
 
-### Download history and the Delete key (0.1.8)
+### Download history and the Delete key (0.2.0)
 
 - Click the Video, Resolution, Status, or Date column header to sort; click again to reverse the direction shown by the arrow. Resolutions sort numerically. Timestamps use your computer's local time zone, and selection stays on the same task after sorting or refreshing.
 - Right-click a record to play, open its folder, redownload, copy its URL or title, or delete it. Double-click to play an existing file or retry a finished task whose file is missing.
@@ -117,7 +119,14 @@ YouTube can rotate account cookies in the browser. If exported cookies quickly s
 3. In the **same tab**, open [YouTube robots.txt](https://www.youtube.com/robots.txt). Keep this as the only incognito tab, then export YouTube cookies in Netscape format using the extension.
 4. Close the incognito window immediately after exporting, then import the file into VidVeya. Do not continue browsing YouTube in that session. This reduces browser-driven cookie rotation; it does not make the session permanent.
 
-Cookies are login credentials: do not share them or upload them to GitHub. VidVeya encrypts the imported session locally using Windows DPAPI and supplies it to YouTube when authenticating downloads. After a successful import, you can delete the exported plaintext TXT file.
+Cookies are login credentials: do not share them or upload them to GitHub. VidVeya stores the imported session locally using Windows DPAPI or macOS Keychain, then supplies it to YouTube when authenticating downloads. After a successful import, you can delete the exported plaintext TXT file.
+
+## Platform support and boundaries
+
+- v0.2.0 supports Windows 10/11 x64 and macOS 12+. macOS packages are native for both Intel and Apple Silicon.
+- Every package includes Python, Qt, yt-dlp, yt-dlp-ejs, Deno, FFmpeg, and ffprobe. Users do not need to install Python, Node.js, Deno, or FFmpeg, or configure `PATH`.
+- macOS packages are currently unsigned and not notarized. On first launch, right-click `VidVeya.app` in Finder, choose **Open**, then choose **Open** again in the confirmation dialog.
+- Windows stores cookies with DPAPI; macOS stores them in Keychain. Login state is not migrated between systems, so import cookies again on a Mac.
 
 ## Boundaries
 
@@ -128,7 +137,7 @@ Cookies are login credentials: do not share them or upload them to GitHub. VidVe
 
 ## Development
 
-The following steps are for developers building from source and require Python 3.12 x64. The provisioning script downloads and verifies pinned Deno, FFmpeg, and Inno Setup releases. Runtime components are shipped in both the installer and portable packages and are not committed to the source repository.
+The following steps are for developers building from source and require Python 3.12. Windows builds use x64 Python; macOS builds use the runner architecture to produce Intel or Apple Silicon packages. The provisioning script downloads and verifies pinned Deno, architecture-specific LGPL FFmpeg builds, and Windows Inno Setup. Runtime components are shipped in release packages and are not committed to the source repository.
 
 ```powershell
 py -3.12 -m venv .venv
@@ -139,13 +148,13 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe scripts\build.py
 ```
 
-Build outputs are written to `release/`: installer, portable ZIP, and SHA-256 checksums. Run a public-video smoke test with:
+Build outputs are written to `release/`: Windows installer/portable ZIP or macOS DMG/ZIP, plus SHA-256 checksums. Run a public-video smoke test with:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\live_check.py --resolution 360
 ```
 
-Pushing a `v*.*.*` tag builds both packages and creates a draft Release through GitHub Actions. After checking the version, installer/portable behavior, and SHA-256 values, publish with `gh release edit <tag> --draft=false --latest --repo turtoncarllyle/vidveya`.
+Pushing a `v*.*.*` tag builds six Windows/macOS installer and portable assets on Windows, Intel macOS, and Apple Silicon macOS runners, then creates a draft Release through GitHub Actions. After checking the version, installer/portable behavior, and SHA-256 values, publish with `gh release edit <tag> --draft=false --latest --repo turtoncarllyle/vidveya`.
 
 ## Sources and licenses
 

@@ -1,7 +1,9 @@
 import ctypes
 from ctypes import wintypes
 import json
+import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import threading
@@ -9,7 +11,7 @@ import uuid
 
 from PySide6.QtCore import QThread, Signal
 
-from .paths import data_dir, resource_root
+from .paths import configure_component_environment, data_dir, executable_suffix, resource_root
 
 
 class JobGuard:
@@ -57,9 +59,24 @@ class JobGuard:
             self.handle = None
 
 
+def terminate_process_tree(process, *, force=False):
+    """Terminate the worker and its media-tool children on Windows and macOS."""
+    if process is None or process.poll() is not None:
+        return
+    if sys.platform == "win32":
+        process.kill()
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL if force else signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        pass
+    if force and process.poll() is None:
+        process.kill()
+
+
 def worker_command() -> list[str]:
     if getattr(sys, "frozen", False):
-        return [str(Path(sys.executable).parent / "VidVeya.Worker.exe")]
+        return [str(Path(sys.executable).parent / f"VidVeya.Worker{executable_suffix()}")]
     return [sys.executable, str(resource_root() / "worker_entry.py")]
 
 
@@ -84,15 +101,14 @@ class WorkerThread(QThread):
             if self.guard:
                 self.guard.close()
             if self.process and self.process.poll() is None:
-                self.process.kill()
+                terminate_process_tree(self.process)
 
     def run(self):
-        import os
         result = None
         error = None
         logs = data_dir() / "logs"
         logs.mkdir(exist_ok=True)
-        environment = os.environ.copy()
+        environment = configure_component_environment()
         environment["PYTHONUTF8"] = "1"
         if not getattr(sys, "frozen", False):
             environment["PYTHONPATH"] = str(resource_root() / "src")
@@ -104,13 +120,15 @@ class WorkerThread(QThread):
                     if self.cancelled.is_set():
                         self.cancelled_signal.emit()
                         return
-                    self.process = subprocess.Popen(worker_command(), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                                    stderr=log, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                                                    env=environment)
+                    self.process = subprocess.Popen(
+                        worker_command(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                        start_new_session=sys.platform != "win32", env=environment,
+                    )
                     try:
                         self.guard = JobGuard(self.process)
                     except Exception:
-                        self.process.kill()
+                        terminate_process_tree(self.process, force=True)
                         self.process.wait()
                         raise
                     self.process.stdin.write((json.dumps(self.request, ensure_ascii=False) + "\n").encode("utf-8"))
@@ -148,7 +166,7 @@ class WorkerThread(QThread):
                     self.guard.close()
                 if self.process:
                     if self.process.poll() is None:
-                        self.process.kill()
+                        terminate_process_tree(self.process, force=True)
                     self.process.wait()
                     if self.process.stdout:
                         self.process.stdout.close()

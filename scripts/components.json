@@ -4,7 +4,8 @@
     "url": "https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-pc-windows-msvc.zip",
     "sha256": "15e5300b0ba3c3695a7621d90160a746ec9e710228cee639afa9d580f6e3cd11",
     "files": ["deno.exe"],
-    "source": "https://github.com/denoland/deno/tree/v2.9.6"
+    "source": "https://github.com/denoland/deno/tree/v2.9.6",
+    "license": "MIT"
   },
   "ffmpeg": {
     "version": "N-126549-ga51bb69b09 (LGPL)",
@@ -12,12 +13,14 @@
     "sha256": "b4005ff59cf7c5e7e5fdad249a4fa2e668c4684c6d69d4e61c820ba609cb5cab",
     "files": ["ffmpeg.exe", "ffprobe.exe"],
     "source": "https://github.com/FFmpeg/FFmpeg/commit/a51bb69b09",
-    "buildSource": "https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-09-14-13-17"
+    "buildSource": "https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-09-14-13-17",
+    "license": "LGPL"
   },
   "inno": {
     "version": "7.1.0",
     "url": "https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe",
     "sha256": "0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f",
-    "source": "https://github.com/jrsoftware/issrc/tree/is-7_1_0"
+    "source": "https://github.com/jrsoftware/issrc/tree/is-7_1_0",
+    "license": "BSD-2-Clause"
   }
 }

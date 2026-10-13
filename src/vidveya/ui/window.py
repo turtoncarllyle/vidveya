@@ -1,7 +1,5 @@
 from datetime import datetime
-import os
 from pathlib import Path
-import subprocess
 import time
 
 from PySide6.QtCore import QEvent, QSignalBlocker, QTimer, Qt, QUrl, Signal
@@ -17,7 +15,8 @@ from .. import __version__
 from ..auth import clear_cookies, import_cookies, vault_path
 from ..i18n import set_language, t
 from ..models import ACTIVE_STATES, FormatOption, STATE_LABELS, UserError
-from ..paths import downloads_dir
+from ..paths import downloads_dir, runtime_platform
+from ..platforms import open_file, reveal_file
 from ..processes import WorkerThread
 from ..store import Store
 from ..tasks import DownloadManager, bounded_int
@@ -288,7 +287,12 @@ class MainWindow(QMainWindow):
         self.health_label.setStyleSheet("font-size: 11px; padding: 2px 4px;")
         footer_layout.addWidget(self.health_label)
 
-        version_lbl = label(f"v{__version__}  ·  Windows", "Eyebrow")
+        platform_label = {
+            "windows-x64": "Windows",
+            "macos-arm64": "macOS · Apple Silicon",
+            "macos-x86_64": "macOS · Intel",
+        }.get(runtime_platform(), runtime_platform())
+        version_lbl = label(f"v{__version__}  ·  {platform_label}", "Eyebrow")
         version_lbl.setStyleSheet("padding: 0 4px;")
         footer_layout.addWidget(version_lbl)
 
@@ -711,7 +715,7 @@ class MainWindow(QMainWindow):
         auth_row.addWidget(button(t("set_btn_clear", "清除"), self.clear_session))
         diag_layout.addLayout(auth_row)
 
-        self.auth_notice = label(t("set_auth_notice_saved", "已加密保存登录态，仅此 Windows 用户可读取。") if vault_path().exists()
+        self.auth_notice = label(t("set_auth_notice_saved", "已安全保存登录态；Windows 使用 DPAPI，macOS 使用 Keychain。") if vault_path().exists()
                                  else t("set_auth_notice_empty", "下载会员或私有视频时，请导入已有观看权限账号的 Netscape Cookie TXT。"), "Muted", True)
         diag_layout.addWidget(self.auth_notice)
 
@@ -780,7 +784,7 @@ class MainWindow(QMainWindow):
         job = self.downloads.get(job_id)
         path = job.get("result", {}).get("path") if job else None
         if path and Path(path).is_file():
-            os.startfile(path)
+            open_file(path)
         else:
             QMessageBox.information(self, "VidVeya", t("hist_file_missing"))
 
@@ -788,8 +792,7 @@ class MainWindow(QMainWindow):
         job = self.downloads.get(job_id)
         path = job.get("result", {}).get("path") if job else None
         if path and Path(path).is_file():
-            subprocess.Popen([str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"),
-                              "/select,", path])
+            reveal_file(path)
         else:
             QMessageBox.information(self, "VidVeya", t("hist_file_missing"))
 
@@ -1236,10 +1239,9 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "VidVeya", t("hist_file_missing"))
                 return
             if reveal:
-                subprocess.Popen([str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"),
-                                  "/select,", path])
+                reveal_file(path)
             else:
-                os.startfile(path)
+                open_file(path)
         except OSError:
             QMessageBox.information(self, "VidVeya", t("notification_open_failed"))
 
@@ -1503,7 +1505,7 @@ class MainWindow(QMainWindow):
         job = self.selected_job()
         path = Path(job.get("result", {}).get("path", "")) if job else None
         if path and path.is_file():
-            subprocess.Popen([str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"), "/select,", str(path)])
+            reveal_file(path)
         else:
             self.history_detail.setText(t("hist_file_missing", "文件已被移动或删除。"))
 
@@ -1511,7 +1513,7 @@ class MainWindow(QMainWindow):
         job = self.selected_job()
         path = Path(job.get("result", {}).get("path", "")) if job else None
         if path and path.is_file():
-            os.startfile(path)
+            open_file(path)
         else:
             self.history_detail.setText(t("hist_file_missing", "文件已被移动或删除。"))
 

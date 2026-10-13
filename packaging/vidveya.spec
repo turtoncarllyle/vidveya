@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 root = Path(SPECPATH).parent
@@ -37,11 +38,17 @@ worker = Analysis([str(root / 'worker_entry.py')], pathex=[str(root / 'src')],
                   excludes=['PySide6', 'tkinter'], noarchive=False)
 gui.binaries = without_conflicting_icu(gui.binaries)
 worker.binaries = without_conflicting_icu(worker.binaries)
-gui_exe = EXE(PYZ(gui.pure), gui.scripts, [], exclude_binaries=True, name='VidVeya',
-              console=False, icon=str(root / 'assets' / 'vidveya.ico'),
-              version=str(root / 'packaging' / 'version_info.txt'), upx=False)
-worker_exe = EXE(PYZ(worker.pure), worker.scripts, [], exclude_binaries=True, name='VidVeya.Worker',
-                 console=True, icon=str(root / 'assets' / 'vidveya.ico'),
-                 version=str(root / 'packaging' / 'version_info.txt'), upx=False)
+if sys.platform == 'win32':
+    gui_exe = EXE(PYZ(gui.pure), gui.scripts, [], exclude_binaries=True, name='VidVeya',
+                  console=False, icon=str(root / 'assets' / 'vidveya.ico'),
+                  version=str(root / 'packaging' / 'version_info.txt'), upx=False)
+    worker_exe = EXE(PYZ(worker.pure), worker.scripts, [], exclude_binaries=True, name='VidVeya.Worker',
+                     console=True, icon=str(root / 'assets' / 'vidveya.ico'),
+                     version=str(root / 'packaging' / 'version_info.txt'), upx=False)
+else:
+    gui_exe = EXE(PYZ(gui.pure), gui.scripts, [], exclude_binaries=True, name='VidVeya',
+                  console=False, upx=False)
+    worker_exe = EXE(PYZ(worker.pure), worker.scripts, [], exclude_binaries=True, name='VidVeya.Worker',
+                     console=True, upx=False)
 collection = COLLECT(gui_exe, worker_exe, gui.binaries, gui.datas, worker.binaries, worker.datas,
                      strip=False, upx=False, name='VidVeya')

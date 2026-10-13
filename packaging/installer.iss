@@ -1,4 +1,4 @@
-#define AppVersion "0.1.8"
+#define AppVersion "0.2.0"
 [Setup]
 AppId={{C6CBEF96-D7B1-4E70-8493-F192E22D9308}
 AppName=VidVeya

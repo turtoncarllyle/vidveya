@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
@@ -5,13 +8,20 @@ from ..i18n import t
 
 
 def play_completion_sound() -> None:
-    """Play the Windows notification sound without delaying download completion."""
+    """Play a native completion sound without delaying download completion."""
     try:
-        import winsound
+        if sys.platform == "win32":
+            import winsound
 
-        winsound.PlaySound(
-            "SystemAsterisk", winsound.SND_ALIAS | winsound.SND_ASYNC | winsound.SND_NODEFAULT
-        )
+            winsound.PlaySound(
+                "SystemAsterisk", winsound.SND_ALIAS | winsound.SND_ASYNC | winsound.SND_NODEFAULT
+            )
+        elif sys.platform == "darwin":
+            subprocess.Popen(
+                ["afplay", "/System/Library/Sounds/Glass.aiff"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
     except (ImportError, RuntimeError, OSError):
         # A missing sound device or disabled system sound must not fail a download.
         pass

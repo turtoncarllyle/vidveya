@@ -1,4 +1,4 @@
-"""User-selected YouTube cookies, encrypted for the current Windows user."""
+"""User-selected YouTube cookies stored with the platform credential vault."""
 import ctypes
 from ctypes import wintypes
 import io
@@ -11,7 +11,105 @@ from .paths import data_dir
 
 
 def vault_path() -> Path:
-    return data_dir() / "youtube-session.bin"
+    # On macOS this is only a marker. The cookie bytes live in Keychain.
+    return data_dir() / ("youtube-session.keychain" if sys.platform == "darwin" else "youtube-session.bin")
+
+
+KEYCHAIN_SERVICE = "com.vidveya.youtube-cookies"
+KEYCHAIN_ACCOUNT = "default"
+ERR_SEC_ITEM_NOT_FOUND = -25300
+ERR_SEC_DUPLICATE_ITEM = -25299
+
+
+def _keychain_security():
+    if sys.platform != "darwin":
+        raise UserError("macOS Keychain 仅在 macOS 上可用。")
+    security = ctypes.CDLL("/System/Library/Frameworks/Security.framework/Security")
+    security.SecKeychainFindGenericPassword.argtypes = [
+        ctypes.c_void_p, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_uint32, ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_uint32), ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),
+    ]
+    security.SecKeychainFindGenericPassword.restype = ctypes.c_int32
+    security.SecKeychainAddGenericPassword.argtypes = [
+        ctypes.c_void_p, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_uint32, ctypes.c_char_p,
+        ctypes.c_uint32, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p),
+    ]
+    security.SecKeychainAddGenericPassword.restype = ctypes.c_int32
+    security.SecKeychainItemModifyAttributesAndData.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p,
+    ]
+    security.SecKeychainItemModifyAttributesAndData.restype = ctypes.c_int32
+    security.SecKeychainItemFreeContent.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    security.SecKeychainItemDelete.argtypes = [ctypes.c_void_p]
+    security.SecKeychainItemDelete.restype = ctypes.c_int32
+    return security
+
+
+def _keychain_identifiers():
+    service = KEYCHAIN_SERVICE.encode("utf-8")
+    account = KEYCHAIN_ACCOUNT.encode("utf-8")
+    return service, account
+
+
+def _keychain_find(security):
+    service, account = _keychain_identifiers()
+    length = ctypes.c_uint32()
+    data = ctypes.c_void_p()
+    item = ctypes.c_void_p()
+    status = security.SecKeychainFindGenericPassword(
+        None, len(service), service, len(account), account,
+        ctypes.byref(length), ctypes.byref(data), ctypes.byref(item),
+    )
+    return status, length, data, item
+
+
+def _keychain_store(payload: bytes):
+    security = _keychain_security()
+    service, account = _keychain_identifiers()
+    buffer = ctypes.create_string_buffer(payload)
+    status, length, data, item = _keychain_find(security)
+    if status == 0:
+        try:
+            status = security.SecKeychainItemModifyAttributesAndData(item, None, len(payload), buffer)
+        finally:
+            security.SecKeychainItemFreeContent(None, data)
+        if status == 0:
+            return
+        raise UserError(f"无法更新 macOS Keychain（错误码 {status}）。")
+    if status != ERR_SEC_ITEM_NOT_FOUND:
+        raise UserError(f"无法写入 macOS Keychain（错误码 {status}）。")
+    item_ref = ctypes.c_void_p()
+    status = security.SecKeychainAddGenericPassword(
+        None, len(service), service, len(account), account, len(payload), buffer, ctypes.byref(item_ref),
+    )
+    if status != 0:
+        raise UserError(f"无法写入 macOS Keychain（错误码 {status}）。")
+
+
+def _keychain_load() -> bytes:
+    security = _keychain_security()
+    status, length, data, item = _keychain_find(security)
+    if status == ERR_SEC_ITEM_NOT_FOUND:
+        raise OSError("VidVeya Cookie Keychain item not found")
+    if status != 0:
+        raise UserError(f"无法读取 macOS Keychain（错误码 {status}）。")
+    try:
+        return ctypes.string_at(data, length.value)
+    finally:
+        security.SecKeychainItemFreeContent(None, data)
+
+
+def _keychain_clear():
+    security = _keychain_security()
+    status, length, data, item = _keychain_find(security)
+    if status == ERR_SEC_ITEM_NOT_FOUND:
+        return
+    if status != 0:
+        raise UserError(f"无法读取 macOS Keychain（错误码 {status}）。")
+    security.SecKeychainItemFreeContent(None, data)
+    status = security.SecKeychainItemDelete(item)
+    if status != 0:
+        raise UserError(f"无法清除 macOS Keychain（错误码 {status}）。")
 
 
 def sanitize_cookies(text: str) -> str:
@@ -78,19 +176,30 @@ def import_cookies(path: Path) -> int:
     except UnicodeError:
         raise UserError("Cookie 文件应为 UTF-8 编码的文本文件。") from None
     target = vault_path()
-    temporary = target.with_suffix(".tmp")
-    temporary.write_bytes(_protect(text.encode("utf-8")))
-    temporary.replace(target)
+    if sys.platform == "darwin":
+        _keychain_store(text.encode("utf-8"))
+        target.write_bytes(b"keychain-v1")
+    else:
+        temporary = target.with_suffix(".tmp")
+        temporary.write_bytes(_protect(text.encode("utf-8")))
+        temporary.replace(target)
     return len(text.splitlines()) - 1
 
 
 def cookie_stream() -> io.StringIO:
     try:
-        text = _protect(vault_path().read_bytes(), decrypt=True).decode("utf-8")
+        if sys.platform == "darwin":
+            if not vault_path().exists():
+                raise OSError("VidVeya Cookie Keychain marker not found")
+            text = _keychain_load().decode("utf-8")
+        else:
+            text = _protect(vault_path().read_bytes(), decrypt=True).decode("utf-8")
     except OSError:
         raise UserError("尚未导入登录态。请在设置中导入有观看权限账号的 YouTube Cookie。") from None
     return io.StringIO(sanitize_cookies(text))
 
 
 def clear_cookies():
+    if sys.platform == "darwin":
+        _keychain_clear()
     vault_path().unlink(missing_ok=True)

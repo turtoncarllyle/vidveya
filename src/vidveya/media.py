@@ -4,16 +4,16 @@ from pathlib import Path
 import subprocess
 
 from .models import UserError
-from .paths import components_dir
+from .paths import component_executable, configure_component_environment
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def tool(name: str) -> Path:
-    path = components_dir() / f"{name}.exe"
-    if not path.is_file():
-        raise UserError(f"内置 {name} 组件缺失。请重新完整解压便携包，或重新安装 VidVeya。")
-    return path
+    try:
+        return component_executable(name)
+    except FileNotFoundError:
+        raise UserError(f"内置 {name} 组件缺失。请重新完整解压便携包，或重新安装 VidVeya。") from None
 
 
 def diagnostics() -> dict:
@@ -27,7 +27,8 @@ def diagnostics() -> dict:
         try:
             command = [str(tool(name)), "--version" if name == "deno" else "-version"]
             process = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
-                                     errors="replace", timeout=20, creationflags=NO_WINDOW)
+                                     errors="replace", timeout=20, creationflags=NO_WINDOW,
+                                     env=configure_component_environment())
             first_line = (process.stdout or process.stderr).splitlines()
             result[name] = {"ok": process.returncode == 0, "version": first_line[0][:180] if first_line else "无法启动"}
         except (UserError, OSError, subprocess.TimeoutExpired) as error:
@@ -42,7 +43,8 @@ def verify_media(path: Path, resolution: int, expected_duration: float | None = 
                "stream=codec_type,codec_name,width,height,sample_rate,channels,duration:format=duration,size",
                "-of", "json", str(path)]
     process = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
-                             errors="replace", timeout=90, creationflags=NO_WINDOW)
+                             errors="replace", timeout=90, creationflags=NO_WINDOW,
+                             env=configure_component_environment())
     if process.returncode:
         raise UserError("文件校验失败：无法读取媒体内容。请重新下载。")
     try:

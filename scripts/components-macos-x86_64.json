@@ -1,0 +1,21 @@
+{
+  "platform": "macos-x86_64",
+  "deno": {
+    "version": "2.9.6",
+    "url": "https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-apple-darwin.zip",
+    "sha256": "7d4524b82bcc557fe020a1a5b56956ed42b992ae5b28026e8ad5d17329533f5f",
+    "files": {"deno": "deno"},
+    "source": "https://github.com/denoland/deno/tree/v2.9.6",
+    "license": "MIT"
+  },
+  "ffmpeg": {
+    "version": "n5.0.1-patch3 (LGPL)",
+    "url": "https://github.com/ColorsWind/FFmpeg-macOS/releases/download/n5.0.1-patch3/FFmpeg_shared-n5.0.1-OSX-x86_64.zip",
+    "sha256": "3ac3fb7c79227f9cfcf2db947a5a0e6081c939d56f13e65eb6b5dcf59742e836",
+    "files": {"bin/ffmpeg": "ffmpeg", "bin/ffprobe": "ffprobe"},
+    "include": ["lib/*.dylib"],
+    "source": "https://github.com/FFmpeg/FFmpeg/tree/n5.0.1",
+    "buildSource": "https://github.com/ColorsWind/FFmpeg-macOS/releases/tag/n5.0.1-patch3",
+    "license": "LGPL"
+  }
+}

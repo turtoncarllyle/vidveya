@@ -7,6 +7,7 @@ else:
     winreg = None
 
 from ..paths import asset_path
+from ..platforms import ui_font_family
 
 
 LIGHT_THEME = {
@@ -125,7 +126,7 @@ QMainWindow, QWidget#Workspace, QWidget#Page, QWidget#TaskList {{
     background: {tokens['bg_app']};
 }}
 QWidget {{
-    font-family: 'Segoe UI', 'Microsoft YaHei UI', -apple-system, sans-serif;
+    font-family: '{ui_font_family()}', 'Microsoft YaHei UI', -apple-system, sans-serif;
     font-size: 14px;
     color: {tokens['text_main']};
 }}

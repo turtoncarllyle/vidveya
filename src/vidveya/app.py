@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from . import __version__
 from .i18n import install_qt_translator, set_language, t
 from .paths import data_dir, resource_root
+from .platforms import ui_font_family
 from .store import Store
 from .ui.style import STYLE
 from .ui.window import MainWindow
@@ -25,12 +26,14 @@ def main():
     application.setApplicationName("VidVeya")
     application.setApplicationVersion(__version__)
     application.setOrganizationName("VidVeya")
-    application.setFont(QFont("Segoe UI", 10))
+    application.setFont(QFont(ui_font_family(), 10))
     application.setStyle("Fusion")
     application.setStyleSheet(STYLE)
-    icon = resource_root() / "assets" / "vidveya.ico"
-    if icon.exists():
-        application.setWindowIcon(QIcon(str(icon)))
+    for icon_name in ("vidveya.icns", "vidveya.png", "vidveya.ico"):
+        icon = resource_root() / "assets" / icon_name
+        if icon.exists():
+            application.setWindowIcon(QIcon(str(icon)))
+            break
     root = data_dir()
     lock = QLockFile(str(root / "application.lock"))
     lock.setStaleLockTime(0)
