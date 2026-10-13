@@ -265,7 +265,9 @@ def test_cookie_help_dialog(make_window, monkeypatch):
     dialog_opened = []
 
     def fake_exec(self):
-        dialog_opened.append(self.windowTitle())
+        # QMessageBox's native macOS style may not expose a window title in
+        # offscreen mode; the visible message is the cross-platform contract.
+        dialog_opened.append(self.text())
         return QMessageBox.StandardButton.Ok
 
     monkeypatch.setattr(QMessageBox, "exec", fake_exec)

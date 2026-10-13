@@ -8,12 +8,12 @@
     "license": "MIT"
   },
   "ffmpeg": {
-    "version": "N-126549-ga51bb69b09 (LGPL)",
-    "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-14-13-17/ffmpeg-N-126549-ga51bb69b09-win64-lgpl.zip",
-    "sha256": "b4005ff59cf7c5e7e5fdad249a4fa2e668c4684c6d69d4e61c820ba609cb5cab",
+    "version": "N-127388-g615b07170e (LGPL)",
+    "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-12-13-12/ffmpeg-N-127388-g615b07170e-win64-lgpl.zip",
+    "sha256": "1ef240c07e11f2a5f286a02b7267c21f5a2443cb918344729c0385507491c936",
     "files": ["ffmpeg.exe", "ffprobe.exe"],
-    "source": "https://github.com/FFmpeg/FFmpeg/commit/a51bb69b09",
-    "buildSource": "https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-09-14-13-17",
+    "source": "https://github.com/FFmpeg/FFmpeg/commit/615b07170e",
+    "buildSource": "https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-10-12-13-12",
     "license": "LGPL"
   },
   "inno": {
