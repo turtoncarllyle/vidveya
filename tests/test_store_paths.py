@@ -65,7 +65,8 @@ def test_clear_history_preserves_active_jobs_and_video_files_beyond_display_limi
 
 def test_unicode_and_reserved_filename():
     assert "中文" in safe_name('中文:标题*?', "YE7VzlLtp-4", 1080, "mp4")
-    assert safe_name("CON", "YE7VzlLtp-4", 720, "mp4").startswith("_CON")
+    reserved = safe_name("CON", "YE7VzlLtp-4", 720, "mp4")
+    assert reserved.startswith("_CON") if sys.platform == "win32" else reserved.startswith("CON")
 
 
 def test_atomic_publish_preserves_existing_file(tmp_path):
